@@ -62,6 +62,8 @@ exports.addEmployeeFeedback = asyncHandler(async (req, res) => {
 });
 
 // ✅ جينيريك: جميع التقييمات (مع دعم فلترة employeeId عبر query param)
+// exports.createEmployeeFeddBack = handlerFactory.createOne(EmployeeFeedback);
+
 exports.getAllFeedbacks = handlerFactory.getAll(EmployeeFeedback);
 
 // ✅ اختياري: لو عايز راوت خاص يعرض تقييمات موظف محدد
