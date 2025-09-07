@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const User = require('./user.model');
 const Salon = require('../salons/salon.model');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const dayjs = require('dayjs');
+
 
 // ───────────────────────── helpers / guards ─────────────────────────
 async function assertOwnerOwnsSalon(ownerId, salonId) {
@@ -167,47 +169,46 @@ const updateEmployeeSchedule = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'User is not an employee' });
   }
 
-  if (req.user.role === 'owner') {
+  // ✅ السماح للموظف نفسه + المالك/الأدمن لنفس الصالون
+  let allowed = req.user.id === id;
+  if (!allowed && req.user.role === 'owner') {
     await assertOwnerOwnsSalon(req.user.id, employee.salonId);
-  } else if (req.user.role === 'admin') {
-    if (!sameSalon(req.user.salonId, employee.salonId)) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
+    allowed = true;
+  } else if (!allowed && req.user.role === 'admin') {
+    allowed = String(req.user.salonId) === String(employee.salonId);
   }
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
 
   employee.employeeData = employee.employeeData || {};
   if (startTime) employee.employeeData.startTime = startTime;
   if (endTime) employee.employeeData.endTime = endTime;
-  if (workingDays) employee.employeeData.workingDays = workingDays;
+  if (Array.isArray(workingDays)) employee.employeeData.workingDays = workingDays;
 
   await employee.save();
   res.json(sanitize(employee));
 });
 
+// user.controller.js
 const updateEmployeeServices = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { services } = req.body; // array of ServiceIds
+  const { services = [] } = req.body;
 
   const employee = await User.findById(id);
   if (!employee) return res.status(404).json({ message: 'User not found' });
-  if (!['barber', 'specialist'].includes(employee.role)) {
-    return res.status(400).json({ message: 'User is not an employee' });
-  }
+  if (!['barber','specialist'].includes(employee.role)) return res.status(400).json({ message: 'User is not an employee' });
 
-  if (req.user.role === 'owner') {
-    await assertOwnerOwnsSalon(req.user.id, employee.salonId);
-  } else if (req.user.role === 'admin') {
-    if (!sameSalon(req.user.salonId, employee.salonId)) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-  }
+  // صلاحيات (نفس منطقك الحالي)
 
-  employee.employeeData = employee.employeeData || {};
-  employee.employeeData.services = services || [];
+  // تحقق الصالون
+  const svs = await Service.find({ _id: { $in: services } }).select('_id salonId isActive');
+  const allSameSalon = svs.every(s => String(s.salonId) === String(employee.salonId));
+  if (!allSameSalon) return res.status(400).json({ message: 'All services must belong to the employee salon' });
+
+  employee.employeeData.services = [...new Set(svs.filter(s => s.isActive).map(s => s._id))];
   await employee.save();
-
   res.json(sanitize(employee));
 });
+
 
 // owner فقط
 const updateUserRole = asyncHandler(async (req, res) => {
@@ -249,6 +250,121 @@ const toggleUserActive = asyncHandler(async (req, res) => {
   res.json(sanitize(user));
 });
 
+// ───────────────────────── blocks (employee time-off / breaks) ─────────────────────────
+function isHHMM(v) { return /^\d{2}:\d{2}$/.test(v || ''); }
+
+const listEmployeeBlocks = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const target = await User.findById(id).select('role salonId employeeData.blocks');
+  if (!target) return res.status(404).json({ message: 'User not found' });
+  if (!['barber','specialist'].includes(target.role))
+    return res.status(400).json({ message: 'User is not an employee' });
+
+  let allowed = req.user.id === id;
+  if (!allowed && req.user.role === 'owner') {
+    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    allowed = true;
+  } else if (!allowed && req.user.role === 'admin') {
+    allowed = String(req.user.salonId) === String(target.salonId);
+  }
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
+
+  res.json({ blocks: target.employeeData?.blocks || [] });
+});
+
+const addEmployeeBlock = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const target = await User.findById(id);
+  if (!target) return res.status(404).json({ message: 'User not found' });
+  if (!['barber','specialist'].includes(target.role))
+    return res.status(400).json({ message: 'User is not an employee' });
+
+  let allowed = req.user.id === id;
+  if (!allowed && req.user.role === 'owner') {
+    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    allowed = true;
+  } else if (!allowed && req.user.role === 'admin') {
+    allowed = String(req.user.salonId) === String(target.salonId);
+  }
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
+
+  // يدعم عنصر واحد أو batch عبر { blocks: [...] }
+  const incoming = Array.isArray(req.body?.blocks) ? req.body.blocks : [req.body];
+
+  const normalized = [];
+  for (const b of incoming) {
+    const wholeDay = !!b.wholeDay;
+    const repeat = b.repeat === 'weekly' ? 'weekly' : 'none';
+
+    if (repeat === 'weekly') {
+      if (typeof b.dayOfWeek !== 'number' || b.dayOfWeek < 0 || b.dayOfWeek > 6) {
+        return res.status(400).json({ message: 'dayOfWeek (0..6) is required for weekly blocks' });
+      }
+    } else {
+      if (!b.date) return res.status(400).json({ message: 'date is required for one-off blocks' });
+    }
+
+    if (!wholeDay) {
+      if (!isHHMM(b.start) || !isHHMM(b.end)) {
+        return res.status(400).json({ message: 'start/end must be HH:mm' });
+      }
+      // تحقق أن start < end
+      const base = dayjs(b.date || dayjs().format('YYYY-MM-DD'));
+      const startDT = dayjs(base.format('YYYY-MM-DD') + ' ' + b.start);
+      const endDT   = dayjs(base.format('YYYY-MM-DD') + ' ' + b.end);
+      if (!startDT.isBefore(endDT)) {
+        return res.status(400).json({ message: 'start must be before end' });
+      }
+    }
+
+    normalized.push({
+      date: repeat === 'none' ? dayjs(b.date).startOf('day').toDate() : undefined,
+      dayOfWeek: repeat === 'weekly' ? b.dayOfWeek : undefined,
+      wholeDay,
+      start: wholeDay ? undefined : b.start,
+      end:   wholeDay ? undefined : b.end,
+      repeat,
+      reason: b.reason,
+      active: true,
+    });
+  }
+
+  target.employeeData = target.employeeData || {};
+  target.employeeData.blocks = target.employeeData.blocks || [];
+  for (const n of normalized) target.employeeData.blocks.push(n);
+
+  target.markModified('employeeData.blocks');
+  await target.save();
+
+  res.status(201).json({ blocks: target.employeeData.blocks });
+});
+
+const deleteEmployeeBlock = asyncHandler(async (req, res) => {
+  const { id, blockId } = req.params;
+  const target = await User.findById(id);
+  if (!target) return res.status(404).json({ message: 'User not found' });
+
+  let allowed = req.user.id === id;
+  if (!allowed && req.user.role === 'owner') {
+    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    allowed = true;
+  } else if (!allowed && req.user.role === 'admin') {
+    allowed = String(req.user.salonId) === String(target.salonId);
+  }
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
+
+  const blocks = target.employeeData?.blocks || [];
+  const i = blocks.findIndex(b => String(b._id) === String(blockId));
+  if (i === -1) return res.status(404).json({ message: 'Block not found' });
+
+  blocks.splice(i, 1);
+  target.markModified('employeeData.blocks');
+  await target.save();
+
+  res.json({ ok: true });
+});
+
+
 // ───────────────────────── exports ─────────────────────────
 module.exports = {
   // listing
@@ -266,4 +382,5 @@ module.exports = {
   // updates
   updateEmployeeSchedule, updateEmployeeServices,
   updateUserRole, toggleUserActive,
+  listEmployeeBlocks, addEmployeeBlock, deleteEmployeeBlock
 };

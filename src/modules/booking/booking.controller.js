@@ -7,6 +7,62 @@ const User = require('../users/user.model');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const dayjs = require('dayjs');
 const axios = require('axios');
+// helpers
+function dayKeyOf(dateISO) {
+  const m = dayjs(dateISO); // 0=Sun..6=Sat
+  return ['sun','mon','tue','wed','thu','fri','sat'][m.day()];
+}
+
+function parseHM(dateISO, hm) { // "HH:mm" -> dayjs
+  return dayjs(`${dayjs(dateISO).format('YYYY-MM-DD')} ${hm}`);
+}
+
+function employeeShiftsForDate(emp, dateISO) {
+  const key = dayKeyOf(dateISO);
+  const shifts = emp?.employeeData?.weeklySchedule?.[key] || [];
+
+  // fallback للقديم لو مافيهوش weeklySchedule
+  if (!shifts.length && emp?.employeeData?.startTime && emp?.employeeData?.endTime) {
+    return [{ start: parseHM(dateISO, emp.employeeData.startTime), end: parseHM(dateISO, emp.employeeData.endTime) }];
+  }
+
+  return shifts.map(s => ({ start: parseHM(dateISO, s.start), end: parseHM(dateISO, s.end) }));
+}
+
+function employeeBlockIntervalsForDate(emp, dateISO) {
+  const d = dayjs(dateISO);
+  const ymd = d.format('YYYY-MM-DD');
+  const dow = d.day();
+  const blocks = emp?.employeeData?.blocks || [];
+  const out = [];
+  for (const b of blocks) {
+    if (!b.active) continue;
+
+    if (b.wholeDay) {
+      const match = (b.repeat === 'weekly' && b.dayOfWeek === dow) ||
+                    (b.repeat === 'none'   && b.date && dayjs(b.date).isSame(d, 'day'));
+      if (match) out.push({ start: d.startOf('day'), end: d.endOf('day') });
+      continue;
+    }
+
+    if (b.repeat === 'weekly' && b.dayOfWeek === dow) {
+      out.push({ start: parseHM(ymd, b.start), end: parseHM(ymd, b.end) });
+    } else if (b.repeat === 'none' && b.date && dayjs(b.date).isSame(d, 'day')) {
+      out.push({ start: parseHM(ymd, b.start), end: parseHM(ymd, b.end) });
+    }
+  }
+  return out;
+}
+
+function fitsAnyShift(shifts, start, end) {
+  return shifts.some(s => !start.isBefore(s.start) && !end.isAfter(s.end));
+}
+
+function overlapsAny(intervals, start, end) {
+  return intervals.some(i => start.isBefore(i.end) && end.isAfter(i.start));
+}
+
+
 
 // 🧠 Util: حساب وقت نهاية الخدمة
 function calculateEndTime(start, duration) {
@@ -39,103 +95,113 @@ exports.createBooking = asyncHandler(async (req, res) => {
 
   let totalPrice = 0;
   services.forEach(s => {
-    serviceMap[s._id] = { duration: s.duration, price: s.price };
+    const duration = (s.durationMin ?? s.duration);
+    serviceMap[s._id] = { duration, price: s.price };
     totalPrice += s.price;
   });
 
   const servicesWithTime = selections.map(s => {
     const start = current.toDate();
-    const end = calculateEndTime(current, serviceMap[s.serviceId].duration);
+    const end = dayjs(start).add(serviceMap[s.serviceId].duration, 'minute').toDate();
     current = dayjs(end);
     return {
       serviceId: s.serviceId,
       employeeId: s.employeeId,
       start,
       end,
-      price: serviceMap[s.serviceId].price,
+      price: serviceMap[s.serviceId].price
     };
   });
 
   const totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId].duration, 0);
 
+  // (اختياري) اربط بالهاتف
+  let clientId = req.user?.role === 'client' ? req.user._id : undefined;
+  if (!clientId && clientPhone) {
+    const existing = await User.findOne({ phone: clientPhone }).select('_id');
+    if (existing) clientId = existing._id;
+  }
+
   const booking = await Booking.create({
-    clientName,
-    clientPhone,
-    salonId,
+    clientName, clientPhone, salonId,
     services: servicesWithTime,
-    totalDuration,
-    totalPrice,
+    totalDuration, totalPrice,
     date: dayjs(date).startOf('day').toDate(),
-    clientId: req.user?._id,
+    clientId,
+    status: 'scheduled'
   });
 
   res.status(201).json(booking);
 });
+
 
 // 🟢 2. المواعيد المتاحة
 exports.getAvailableSlots = asyncHandler(async (req, res) => {
   const { date, selections } = req.body;
   const salonId = req.tenant.salonId;
 
+  // durations
   const serviceMap = {};
   const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
-  services.forEach(s => (serviceMap[s._id] = s.duration));
+  services.forEach(s => { serviceMap[s._id] = (s.durationMin ?? s.duration); });
 
+  // employees
   const employeeIds = [...new Set(selections.map(s => s.employeeId))];
-  const employees = await User.find({ _id: { $in: employeeIds }, role: { $in: ['barber', 'specialist'] } });
+  const employees = await User.find({ _id: { $in: employeeIds }, role: { $in: ['barber', 'specialist'] } })
+                              .lean();
+  const employeeMap = Object.fromEntries(employees.map(e => [String(e._id), e]));
 
-  const employeeMap = Object.fromEntries(employees.map(emp => [emp._id.toString(), emp]));
+  // existing bookings
   const bookings = await Booking.find({
     salonId,
-    date: {
-      $gte: dayjs(date).startOf('day').toDate(),
-      $lte: dayjs(date).endOf('day').toDate(),
-    },
-    'services.employeeId': { $in: employeeIds },
-  });
+    date: { $gte: dayjs(date).startOf('day').toDate(), $lte: dayjs(date).endOf('day').toDate() },
+    'services.employeeId': { $in: employeeIds }
+  }).lean();
 
   const busyMap = {};
-  employeeIds.forEach(id => (busyMap[id] = []));
+  employeeIds.forEach(id => busyMap[id] = []);
   bookings.forEach(b => {
-    b.services.forEach(s => {
-      busyMap[s.employeeId]?.push({ start: dayjs(s.start), end: dayjs(s.end) });
+    b.services.forEach(svc => {
+      const id = String(svc.employeeId);
+      if (busyMap[id]) busyMap[id].push({ start: dayjs(svc.start), end: dayjs(svc.end) });
     });
   });
 
-  const availableSlots = [];
-  const totalDuration = selections.reduce((acc, s) => acc + serviceMap[s.serviceId], 0);
-  let current = dayjs(date).hour(0).minute(0);
-  const maxStartTime = dayjs(date).endOf('day').subtract(totalDuration, 'minute');
+  const totalDuration = selections.reduce((acc, s) => acc + (serviceMap[s.serviceId] || 0), 0);
+  const available = [];
+  let current = dayjs(date).hour(0).minute(0).second(0).millisecond(0);
+  const maxStart = dayjs(date).endOf('day').subtract(totalDuration, 'minute');
 
-  while (current.isBefore(maxStartTime)) {
-    let isValid = true;
+  while (current.isBefore(maxStart) || current.isSame(maxStart)) {
+    let ok = true;
     let tempStart = current;
 
-    for (const s of selections) {
-      const duration = serviceMap[s.serviceId];
-      const emp = employeeMap[s.employeeId];
-if (!emp || !emp.employeeData?.startTime || !emp.employeeData?.endTime) {
-  isValid = false;
-  break;
-}
-
-const empStart = dayjs(`${date} ${emp.employeeData.startTime}`);
-const empEnd = dayjs(`${date} ${emp.employeeData.endTime}`);
+    for (const sel of selections) {
+      const duration = serviceMap[sel.serviceId];
       const tempEnd = tempStart.add(duration, 'minute');
 
-      if (tempStart.isBefore(empStart) || tempEnd.isAfter(empEnd)) { isValid = false; break; }
-      const clash = busyMap[s.employeeId].some(b => tempStart.isBefore(b.end) && tempEnd.isAfter(b.start));
-      if (clash) { isValid = false; break; }
+      const emp = employeeMap[String(sel.employeeId)];
+      if (!emp) { ok = false; break; }
 
-      tempStart = tempEnd;
+      const shifts = employeeShiftsForDate(emp, date);
+      if (!shifts.length || !fitsAnyShift(shifts, tempStart, tempEnd)) { ok = false; break; }
+
+      const blocks = employeeBlockIntervalsForDate(emp, date);
+      if (overlapsAny(blocks, tempStart, tempEnd)) { ok = false; break; }
+
+      const busy = busyMap[String(sel.employeeId)] || [];
+      if (overlapsAny(busy, tempStart, tempEnd)) { ok = false; break; }
+
+      tempStart = tempEnd; // السervice اللي بعدها تبدأ بعد نهاية الحالية
     }
 
-    if (isValid) availableSlots.push(current.format('HH:mm'));
-    current = current.add(10, 'minute');
+    if (ok) available.push(current.format('HH:mm'));
+    current = current.add(10, 'minute'); // step
   }
 
-  res.json({ slots: availableSlots });
+  res.json({ slots: available });
 });
+
 
 // 🟢 3. استعلامات الحجز حسب الدور (client - barber - admin)
 exports.getMyBookings = asyncHandler(async (req, res) => {
@@ -173,24 +239,25 @@ exports.editBooking = asyncHandler(async (req, res) => {
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
   const isOwner = req.user.role === 'client' && booking.clientId?.toString() === req.user.id;
-  const isEmployee = ['barber', 'specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user.id);
-  const isAdmin = ['admin', 'owner'].includes(req.user.role);
+  const isEmployee = ['barber','specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user.id);
+  const isAdmin = ['admin','owner'].includes(req.user.role);
   if (!isOwner && !isEmployee && !isAdmin) return res.status(403).json({ message: 'Not allowed' });
 
   const serviceMap = {};
   const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
-  services.forEach(s => (serviceMap[s._id] = s.duration));
+  services.forEach(s => (serviceMap[s._id] = { duration: (s.durationMin ?? s.duration), price: s.price }));
 
   let current = dayjs(`${date} ${startTime}`);
   const servicesWithTime = selections.map(s => {
     const start = current.toDate();
-    const end = calculateEndTime(current, serviceMap[s.serviceId]);
+    const end = dayjs(start).add(serviceMap[s.serviceId].duration, 'minute').toDate();
     current = dayjs(end);
-    return { serviceId: s.serviceId, employeeId: s.employeeId, start, end };
+    return { serviceId: s.serviceId, employeeId: s.employeeId, start, end, price: serviceMap[s.serviceId].price };
   });
 
   booking.services = servicesWithTime;
-  booking.totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId], 0);
+  booking.totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId].duration, 0);
+  booking.totalPrice = servicesWithTime.reduce((acc, s) => acc + s.price, 0);
   booking.date = dayjs(date).startOf('day').toDate();
   booking.editReason = reason;
   booking.status = 'rescheduled';
@@ -229,7 +296,7 @@ exports.editBookingByAdmin = asyncHandler(async (req, res) => {
   const serviceMap = {};
   const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
   services.forEach(s => {
-    serviceMap[s._id] = s.duration;
+    serviceMap[s._id] = s.durationMin;
   });
 
   let current = dayjs(`${date} ${startTime}`);
@@ -315,7 +382,7 @@ exports.editBookingByEmployee = asyncHandler(async (req, res) => {
 
   const serviceMap = {};
   const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
-  services.forEach(s => (serviceMap[s._id] = s.duration));
+  services.forEach(s => (serviceMap[s._id] = s.durationMin));
 
   let current = dayjs(`${date} ${startTime}`);
   const servicesWithTime = selections.map(s => {
@@ -364,15 +431,135 @@ exports.cancelBookingByClient = asyncHandler(async (req, res) => {
 
 exports.updateBookingByClient = asyncHandler(async (req, res) => {
   const { selections, date, startTime, reason } = req.body;
-  const updated = await Booking.findOneAndUpdate(
-    { _id: req.params.id, clientId: req.user.id },
-    { selections, date, startTime, editReason: reason, status: 'rescheduled' },
-    { new: true }
-  );
 
-  if (!updated) return res.status(404).json({ message: 'Booking not found' });
-  await sendBookingNotification(updated, 'edited_by_client');
-  res.json(updated);
+  const booking = await Booking.findOne({ _id: req.params.id, clientId: req.user.id });
+  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+  const serviceMap = {};
+  const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
+  services.forEach(s => (serviceMap[s._id] = (s.durationMin ?? s.duration)));
+
+  let current = dayjs(`${date} ${startTime}`);
+  const servicesWithTime = selections.map(s => {
+    const start = current.toDate();
+    const end = dayjs(start).add(serviceMap[s.serviceId], 'minute').toDate();
+    current = dayjs(end);
+    return { serviceId: s.serviceId, employeeId: s.employeeId, start, end };
+  });
+
+  booking.services = servicesWithTime;
+  booking.totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId], 0);
+  booking.date = dayjs(date).startOf('day').toDate();
+  booking.editReason = reason;
+  booking.status = 'rescheduled';
+  await booking.save();
+
+  await sendBookingNotification(booking, 'edited_by_client');
+  res.json(booking);
 });
 
 
+// const Booking = require('./booking.model');
+// const Service = require('../services/service.model');
+// const User    = require('../users/user.model');
+// const { asyncHandler } = require('../../utils/asyncHandler');
+// const dayjs = require('dayjs');
+// ... لو عندك calculateEndTime و sendBookingNotification بالفعل فوق، سيبهم زي ما هم
+
+// 🔹 1) إنشاء حجز بواسطة موظف (لنفسه فقط)
+exports.createBookingByEmployee = asyncHandler(async (req, res) => {
+  const { clientName, clientPhone, date, startTime, selections } = req.body;
+  const salonId = req.tenant.salonId;
+
+  // الموظف لازم يحجز لنفسه فقط (كل selection employeeId = req.user._id)
+  if (!['barber','specialist'].includes(req.user.role)) {
+    return res.status(403).json({ message: 'Only employees can use this endpoint' });
+  }
+  if (!selections?.length || !selections.every(s => String(s.employeeId) === String(req.user._id))) {
+    return res.status(400).json({ message: 'Employees can only create bookings for themselves' });
+  }
+
+  // نفس منطق createBooking: حساب الأوقات والسعر الكلي
+  let current = dayjs(`${date} ${startTime}`);
+  const serviceMap = {};
+  const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
+
+  let totalPrice = 0;
+  services.forEach(s => {
+    // durationMin في Service
+    serviceMap[s._id] = { duration: s.durationMin ?? s.duration, price: s.price };
+    totalPrice += s.price;
+  });
+
+  const servicesWithTime = selections.map(s => {
+    const start = current.toDate();
+    const end = dayjs(start).add(serviceMap[s.serviceId].duration, 'minute').toDate();
+    current = dayjs(end);
+    return { serviceId: s.serviceId, employeeId: s.employeeId, start, end, price: serviceMap[s.serviceId].price };
+  });
+
+  const totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId].duration, 0);
+
+  const booking = await Booking.create({
+    clientName,
+    clientPhone,
+    salonId,
+    services: servicesWithTime,
+    totalDuration,
+    totalPrice,
+    date: dayjs(date).startOf('day').toDate(),
+    clientId: req.user?.role === 'client' ? req.user._id : undefined, // غالبًا undefined هنا
+    status: 'scheduled'
+  });
+
+  res.status(201).json(booking);
+});
+
+// 🔹 2) وسم الحجز No-Show (الموظف المشارك أو المالك/الأدمن)
+exports.markNoShow = asyncHandler(async (req, res) => {
+  const { reason } = req.body || {};
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+  const isEmployee = ['barber','specialist'].includes(req.user.role)
+    && booking.services.some(s => String(s.employeeId) === String(req.user._id));
+  const isAdmin = ['owner','admin'].includes(req.user.role);
+
+  if (!isEmployee && !isAdmin) return res.status(403).json({ message: 'Not allowed' });
+
+  // ممكن تضيف تحقق إن الحجز مر وقته (اختياري)
+  booking.status = 'no-show';
+  booking.cancelReason = reason || 'no-show';
+  await booking.save();
+
+  // زود noShowCount للعميل (لو موجود)
+  if (booking.clientId) {
+    await User.updateOne({ _id: booking.clientId }, { $inc: { noShowCount: 1 } });
+  } else if (booking.clientPhone) {
+    // Fallback: لو العميل مسجل بنفس رقم الموبايل
+    await User.updateOne({ phone: booking.clientPhone }, { $inc: { noShowCount: 1 } });
+  }
+
+
+  await sendBookingNotification(booking, 'no_show');
+  res.json(booking);
+});
+
+// 🔹 3) وسم الحجز Completed (الموظف المشارك أو المالك/الأدمن)
+exports.markCompleted = asyncHandler(async (req, res) => {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+  const isEmployee = ['barber','specialist'].includes(req.user.role)
+    && booking.services.some(s => String(s.employeeId) === String(req.user._id));
+  const isAdmin = ['owner','admin'].includes(req.user.role);
+
+  if (!isEmployee && !isAdmin) return res.status(403).json({ message: 'Not allowed' });
+
+  booking.status = 'completed';
+  booking.completedAt = new Date();
+  await booking.save();
+
+  await sendBookingNotification(booking, 'completed');
+  res.json(booking);
+});

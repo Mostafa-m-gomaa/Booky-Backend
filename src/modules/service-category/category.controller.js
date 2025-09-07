@@ -44,3 +44,4 @@ const deleted = await Category.findByIdAndDelete(req.params.id);
 if (!deleted) return res.status(404).json({ message: 'Category not found' });
 res.json({ message: 'Category deleted successfully' });
 });
+

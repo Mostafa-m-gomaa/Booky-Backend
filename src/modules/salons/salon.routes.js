@@ -1,21 +1,70 @@
+// const router = require('express').Router();
+// const { requireAuth } = require('../../middleware/auth');
+// const { requireRole } = require('../../lib/rbac/requireRole');
+// const controller = require('./salon.controller');
+// const upload = require('../../middleware/upload');
+
+
+// router.use(requireAuth);
+// router.use(requireRole(['owner', 'admin']));
+
+// router.post('/',  upload.array('images', 5), controller.createSalon);
+// router.get('/my', controller.getMySalons);
+// // الصالونات العامة (كل الناس تقدر تشوفها)
+// router.get('/', controller.getAllSalons);
+
+// // التفاصيل الكاملة لصالون واحد
+// router.get('/:id', controller.getSalonDetails);
+// router.put('/:id', upload.array('images', 5), controller.updateSalon);
+// router.delete('/:id', controller.deleteSalon);
+
+// module.exports = router;
+
+
+
 const router = require('express').Router();
 const { requireAuth } = require('../../middleware/auth');
 const { requireRole } = require('../../lib/rbac/requireRole');
-const controller = require('./salon.controller');
 const upload = require('../../middleware/upload');
+const controller = require('./salon.controller');
 
-
-router.use(requireAuth);
-router.use(requireRole(['owner', 'admin']));
-
-router.post('/',  upload.array('images', 5), controller.createSalon);
-router.get('/my', controller.getMySalons);
-// الصالونات العامة (كل الناس تقدر تشوفها)
+// ───────────── Public routes (بدون تسجيل دخول) ─────────────
+// كل الصالونات (فلترة/سورتينج/باجينج عبر الكويري)
 router.get('/', controller.getAllSalons);
 
-// التفاصيل الكاملة لصالون واحد
-router.get('/:id', controller.getSalonDetails);
-router.put('/:id', upload.array('images', 5), controller.updateSalon);
-router.delete('/:id', controller.deleteSalon);
+// تفاصيل كاملة لصالون واحد (موظفين + تقييماتهم + الكاتيجوريز + الخدمات + ريفيوهات الصالون)
+router.get('/:id/details', controller.getSalonDetails);
+
+// صالون واحد (بيانات أساسية) باستخدام الهاندلر فاكتوري
+router.get('/:id', controller.getOneSalon);
+
+// ───────────── Protected routes (للمالك) ─────────────
+router.use(requireAuth);
+
+// صالوناتي أنا (المالك)
+router.get('/owner/my', requireRole(['owner']), controller.getMySalons);
+
+// إنشاء صالون جديد (مالك فقط)
+router.post(
+  '/',
+  requireRole(['owner']),
+  upload.array('images', 10),
+  controller.createSalon
+);
+
+// تعديل صالون (مالك فقط)
+router.put(
+  '/:id',
+  requireRole(['owner']),
+  upload.array('images', 10),
+  controller.updateSalon
+);
+
+// حذف صالون (مالك فقط)
+router.delete(
+  '/:id',
+  requireRole(['owner']),
+  controller.deleteSalon
+);
 
 module.exports = router;
