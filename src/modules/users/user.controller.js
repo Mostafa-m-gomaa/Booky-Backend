@@ -4,7 +4,7 @@ const User = require('./user.model');
 const Salon = require('../salons/salon.model');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const dayjs = require('dayjs');
-
+const { sendOtp ,verifyOtp:verifyGenericOtp, issueResetToken } = require('../../utils/otp.service');
 
 // ───────────────────────── helpers / guards ─────────────────────────
 async function assertOwnerOwnsSalon(ownerId, salonId) {
@@ -132,6 +132,7 @@ const createEmployee = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'role must be barber or specialist' });
   }
 
+  // الصلاحيات حسب دور المُنشِئ
   if (req.user.role === 'owner') {
     await assertOwnerOwnsSalon(req.user.id, salonId);
   } else if (req.user.role === 'admin') {
@@ -141,22 +142,39 @@ const createEmployee = asyncHandler(async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+
+  // تطبيع/تحقق بسيط من weeklySchedule (اختياري)
+  const normalizeWeekly = (ws = {}) => {
+    const days = ['sun','mon','tue','wed','thu','fri','sat'];
+    const out = {};
+    for (const d of days) {
+      const arr = Array.isArray(ws[d]) ? ws[d] : [];
+      out[d] = arr
+        .filter(s => s && typeof s.start === 'string' && typeof s.end === 'string')
+        .map(s => ({ start: s.start, end: s.end })); // schema هيتأكد من HH:mm
+    }
+    return out;
+  };
+
   const employee = await User.create({
-    name, phone, email, passwordHash,
+    name,
+    phone,
+    email,
+    passwordHash,
     role,
     salonId,
     isActive: true,
     employeeData: {
       services: employeeData?.services || [],
-      workingDays: employeeData?.workingDays || [],
-      startTime: employeeData?.startTime || '10:00',
-      endTime: employeeData?.endTime || '18:00',
-      isActive: true,
+      weeklySchedule: normalizeWeekly(employeeData?.weeklySchedule), // ← مهم
+      blocks: Array.isArray(employeeData?.blocks) ? employeeData.blocks : [], // ← لو عندك بلوكس
+      isActive: employeeData?.isActive ?? true,
     },
   });
 
   res.status(201).json(sanitize(employee));
 });
+
 
 // ───────────────────────── updates (team) ─────────────────────────
 const updateEmployeeSchedule = asyncHandler(async (req, res) => {
@@ -364,7 +382,61 @@ const deleteEmployeeBlock = asyncHandler(async (req, res) => {
   res.json({ ok: true });
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ message: 'phone is required' });
+  const user = await User.findOne({ phone });
+  // لأسباب أمنية: ما نكشفش وجود المستخدم
+  if (user) await sendOtp({ user, purpose: 'reset' });
 
+  res.json({ ok: true });
+});
+
+// POST /auth/password/verify-otp
+const verifyResetOtp = asyncHandler(async (req, res) => {
+  const { phone, code } = req.body;
+  if (!phone || !code) return res.status(400).json({ message: 'phone and code are required' });
+
+  const user = await User.findOne({ phone });
+  if (!user) return res.status(400).json({ message: 'Invalid or expired OTP' });
+
+  // نفس الخدمة العامة اللي كتبناها قبل كده
+  const verifiedUser = await verifyGenericOtp({ userId: user._id, code, purpose: 'reset' });
+  const resetToken = await issueResetToken(verifiedUser);
+  res.json({ ok: true, resetToken });
+});
+
+// POST /auth/password/reset
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const { phone, resetToken, newPassword } = req.body;
+  if (!phone || !resetToken || !newPassword) {
+    return res.status(400).json({ message: 'phone, resetToken, newPassword are required' });
+  }
+  const user = await User.findOne({ phone });
+  if (!user || !user.resetTokenHash || !user.resetTokenExpires) {
+    return res.status(400).json({ message: 'Invalid or expired reset token' });
+  }
+  if (new Date() > user.resetTokenExpires) {
+    user.resetTokenHash = undefined;
+    user.resetTokenExpires = undefined;
+    await user.save();
+    return res.status(400).json({ message: 'Reset token expired. Request a new OTP.' });
+  }
+  const ok = await bcrypt.compare(String(resetToken), user.resetTokenHash);
+  if (!ok) return res.status(400).json({ message: 'Invalid reset token' });
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.passwordChangedAt = new Date();
+  user.resetTokenHash = undefined;
+  user.resetTokenExpires = undefined;
+  await user.save();
+
+  // إشعار اختياري
+  try { await sendWA(user.phone, 'تم تغيير كلمة المرور بنجاح.'); } catch (_) {}
+
+  res.json({ ok: true });
+});
 // ───────────────────────── exports ─────────────────────────
 module.exports = {
   // listing
@@ -382,5 +454,6 @@ module.exports = {
   // updates
   updateEmployeeSchedule, updateEmployeeServices,
   updateUserRole, toggleUserActive,
-  listEmployeeBlocks, addEmployeeBlock, deleteEmployeeBlock
+  listEmployeeBlocks, addEmployeeBlock, deleteEmployeeBlock ,
+  forgotPassword, verifyResetOtp, resetPassword
 };

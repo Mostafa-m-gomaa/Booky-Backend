@@ -3,8 +3,8 @@ const { asyncHandler } = require('../../utils/asyncHandler');
 
 
 exports.createCategory = asyncHandler(async (req, res) => {
-const { name, description } = req.body;
-const salonId = req?.query?.salonId;
+const { name, description ,salonId } = req.body;
+// const salonId = req?.query?.salonId;
 if (!salonId) return res.status(400).json({ message: 'Salon scope missing' });
 
 

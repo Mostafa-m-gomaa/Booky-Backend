@@ -8,11 +8,14 @@ const upload = require("../../middleware/upload");
 router.use(requireAuth, tenantScope);
 router.use(requireRole(["owner", "admin"]));
 
-router.route("/").post(
+router
+  .route("/")
+  .post(
     upload.array("images", 5),
     controller.prepareCreateService,
     controller.addService
-  ).get(controller.getServices);
+  )
+  .get(controller.getServices);
 router
   .route("/:id")
   .put(

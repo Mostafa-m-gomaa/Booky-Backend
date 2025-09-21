@@ -1,27 +1,3 @@
-// const router = require('express').Router();
-// const { requireAuth } = require('../../middleware/auth');
-// const { requireRole } = require('../../lib/rbac/requireRole');
-// const controller = require('./salon.controller');
-// const upload = require('../../middleware/upload');
-
-
-// router.use(requireAuth);
-// router.use(requireRole(['owner', 'admin']));
-
-// router.post('/',  upload.array('images', 5), controller.createSalon);
-// router.get('/my', controller.getMySalons);
-// // الصالونات العامة (كل الناس تقدر تشوفها)
-// router.get('/', controller.getAllSalons);
-
-// // التفاصيل الكاملة لصالون واحد
-// router.get('/:id', controller.getSalonDetails);
-// router.put('/:id', upload.array('images', 5), controller.updateSalon);
-// router.delete('/:id', controller.deleteSalon);
-
-// module.exports = router;
-
-
-
 const router = require('express').Router();
 const { requireAuth } = require('../../middleware/auth');
 const { requireRole } = require('../../lib/rbac/requireRole');
@@ -47,7 +23,7 @@ router.get('/owner/my', requireRole(['owner']), controller.getMySalons);
 // إنشاء صالون جديد (مالك فقط)
 router.post(
   '/',
-  requireRole(['owner']),
+  requireRole(['owner','super-admin']),
   upload.array('images', 10),
   controller.createSalon
 );
@@ -55,7 +31,7 @@ router.post(
 // تعديل صالون (مالك فقط)
 router.put(
   '/:id',
-  requireRole(['owner']),
+  requireRole(['owner','super-admin']),
   upload.array('images', 10),
   controller.updateSalon
 );
@@ -63,8 +39,10 @@ router.put(
 // حذف صالون (مالك فقط)
 router.delete(
   '/:id',
-  requireRole(['owner']),
+  requireRole(['owner',"super-admin"]),
   controller.deleteSalon
 );
+
+router.post('/:id/toggle-active', requireRole(['superadmin']), controller.toggleSalonActive);
 
 module.exports = router;

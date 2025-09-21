@@ -28,13 +28,13 @@ exports.updateOne = (Model) => async (req, res, next) => {
 exports.createOne = (Model) => async (req, res) => {
   try {
     const document = await Model.create(req.body);
-    const localizedDocument = Model.schema.methods.toJSONLocalizedOnly(
-      document,
-      req.locale
-    );
+    // const localizedDocument = Model.schema.methods.toJSONLocalizedOnly(
+    //   document,
+    //   req.locale
+    // );
     return res
       .status(201)
-      .json({ status: `created successfully`, data: localizedDocument });
+      .json({ status: `created successfully`, data: document });
   } catch (error) {
     console.error("Error creating document:", error);
     return res.status(500).json({ error: error.message });

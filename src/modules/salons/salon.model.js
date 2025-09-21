@@ -9,8 +9,10 @@ const OpeningHourSchema = new Schema({
 
 const SalonSchema = new Schema({
   name: { type: String, required: true },
+  area: { type: String, required: true },
+  slotDuration: { type: Number, default: 10 }, // minutes
   ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['men', 'women', 'both'], default: 'both' },
+  type: { type: String, enum: ['men', 'women', 'both']},
   address: { type: String },
   phone: { type: String },
   location: {
@@ -19,7 +21,7 @@ const SalonSchema = new Schema({
   },
   openingHours: [OpeningHourSchema],
   images: [String],
-  isActive: { type: Boolean, default: true },
+  isActive: { type: Boolean, default: false },
 }, { timestamps: true });
 
 SalonSchema.index({ location: '2dsphere' });

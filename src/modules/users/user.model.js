@@ -28,10 +28,25 @@ const EmployeeBlockSchema = new Schema({
   active: { type: Boolean, default: true },
 }, { _id: true });
 
+const OtpSchema = new Schema({
+  hash: { type: String },               // bcrypt hash للكود
+  expiresAt: { type: Date },            // انتهاء صلاحية الكود
+  attempts: { type: Number, default: 0 },
+  lastSentAt: { type: Date },
+  lockedUntil: { type: Date },          // قفل مؤقت بعد محاولات فاشلة
+}, { _id: false });
+
 const UserSchema = new Schema(
   {
     name: { type: String, required: true },
     avatar: { type: String },
+    isPhoneVerified: { type: Boolean, default: false },
+    activatedAt: { type: Date },
+    otp: { type: OtpSchema, default: {} },
+    otps: {
+      register: { type: OtpSchema, default: {} },
+      reset:    { type: OtpSchema, default: {} },
+    },
     email: { type: String, index: true, sparse: true },
     phone: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
@@ -40,9 +55,12 @@ const UserSchema = new Schema(
     isActive: { type: Boolean, default: true },
     noShowCount: { type: Number, default: 0 },
     tokenVersion: { type: Number, default: 0 },
+    gender : { type: String, enum: ['male','female']},
+    resetTokenHash:    { type: String },
+    resetTokenExpires: { type: Date },
     employeeData: {
       services: [{ type: Schema.Types.ObjectId, ref: 'Service' }],
-      workingDays: [{ type: String, enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] }],
+      // workingDays: [{ type: String, enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] }],
       weeklySchedule: {
         type: WeeklyScheduleSchema,
         default: () => ({ sun: [], mon: [], tue: [], wed: [], thu: [], fri: [], sat: [] })
