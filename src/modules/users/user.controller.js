@@ -437,6 +437,61 @@ const resetPassword = asyncHandler(async (req, res) => {
 
   res.json({ ok: true });
 });
+
+// ───────────────────────── delete user from salon ─────────────────────────
+const deleteUserFromSalon = asyncHandler(async (req, res) => {
+  const { salonId, id } = req.params; // id = target user id
+  const hard = String(req.query.hard || '').toLowerCase() === 'true';
+
+  const target = await User.findById(id);
+  if (!target) return res.status(404).json({ message: 'User not found' });
+
+  // لازم المستهدف يكون من نفس الصالون اللي في الباث
+  if (!sameSalon(target.salonId, salonId)) {
+    return res.status(400).json({ message: 'Target user does not belong to this salon' });
+  }
+
+  // صلاحيات المُمثّل
+  if (req.user.role === 'owner') {
+    await assertOwnerOwnsSalon(req.user.id, salonId);
+    if (['owner'].includes(target.role)) {
+      return res.status(403).json({ message: 'Owner cannot delete another owner' });
+    }
+  } else if (req.user.role === 'admin') {
+    if (!sameSalon(req.user.salonId, salonId)) {
+      return res.status(403).json({ message: 'Admin can only manage users in his salon' });
+    }
+    if (['owner', 'admin'].includes(target.role)) {
+      return res.status(403).json({ message: 'Admin cannot delete owner/admin' });
+    }
+  } else if (req.user.role !== 'super-admin') {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  // منع حذف نفسك بالخطأ (اختياري)
+  if (String(req.user.id) === String(target._id) && req.user.role !== 'super-admin') {
+    return res.status(400).json({ message: 'You cannot delete your own account' });
+  }
+
+  if (hard) {
+    // حذف نهائي
+    await User.deleteOne({ _id: target._id });
+    return res.json({ ok: true, deleted: true, mode: 'hard' });
+  }
+
+  // Soft delete (تعطيل المستخدم + إلغاء تفعيله كموظف)
+  target.isActive = false;
+  target.deactivatedAt = new Date();
+  if (target.employeeData) {
+    target.employeeData.isActive = false;
+  }
+  await target.save();
+
+  res.json({ ok: true, deleted: true, mode: 'soft', user: sanitize(target) });
+});
+
+
+
 // ───────────────────────── exports ─────────────────────────
 module.exports = {
   // listing
@@ -455,5 +510,5 @@ module.exports = {
   updateEmployeeSchedule, updateEmployeeServices,
   updateUserRole, toggleUserActive,
   listEmployeeBlocks, addEmployeeBlock, deleteEmployeeBlock ,
-  forgotPassword, verifyResetOtp, resetPassword
+  forgotPassword, verifyResetOtp, resetPassword , deleteUserFromSalon
 };

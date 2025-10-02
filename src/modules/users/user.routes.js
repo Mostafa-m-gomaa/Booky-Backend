@@ -23,7 +23,7 @@ const {
 
   // self
   getMe, updateMe,
-  forgotPassword, verifyResetOtp, resetPassword
+  forgotPassword, verifyResetOtp, resetPassword , deleteUserFromSalon
 } = require('./user.controller');
 
 // ───────────────────────────────────────────────────────────
@@ -49,6 +49,11 @@ router.get('/', requireRole(['super-admin']), list);
 
 // Current tenant members
 router.get('/my-salon', requireRole(['owner','admin','barber','super-admin']), listMySalon);
+router.delete(
+  '/salons/:salonId/users/:id',
+  requireRole(['super-admin', 'owner', 'admin']),
+  deleteUserFromSalon
+);
 
 // (Optional) list by explicit salonId (owner/admin)
 router.get('/by-salon/:salonId', requireRole(['owner','admin','super-admin']), listBySalonId);
