@@ -1,7 +1,6 @@
 // const ApiError = require("./apiError");
 // const ApiFeatures = require("./apiFeatures");
 
-
 // exports.updateOne = (Model) => async (req, res, next) => {
 //   try {
 //     const document = await Model.findByIdAndUpdate(req.params.id, req.body, {
@@ -226,7 +225,8 @@ function safeLocalize(Model, data, locale) {
     console.error("Localization method threw:", e);
   }
   // fallback: return data as-is (convert mongoose docs to plain objects where appropriate)
-  if (Array.isArray(data)) return data.map(d => (d && d.toObject ? d.toObject() : d));
+  if (Array.isArray(data))
+    return data.map((d) => (d && d.toObject ? d.toObject() : d));
   return data && data.toObject ? data.toObject() : data;
 }
 
@@ -239,11 +239,14 @@ exports.updateOne = (Model) => async (req, res, next) => {
 
     if (!document) {
       return next(
-        new ApiError(res.__ ? res.__("errors.Not-Found", { document: "document" }) : `No document For this id ${req.params.id}`, 404)
+        new ApiError(
+          res.__
+            ? res.__("errors.Not-Found", { document: "document" })
+            : `No document For this id ${req.params.id}`,
+          404
+        )
       );
     }
-
-    const localizedDocument = safeLocalize(Model, document, req.locale);
 
     return res
       .status(200)
@@ -258,10 +261,9 @@ exports.updateOne = (Model) => async (req, res, next) => {
 exports.createOne = (Model) => async (req, res, next) => {
   try {
     const document = await Model.create(req.body);
-    const localized = safeLocalize(Model, document, req.locale);
     return res
       .status(201)
-      .json({ status: `created successfully`, data: localized });
+      .json({ status: `created successfully`, data: document });
   } catch (error) {
     console.error("Error creating document:", error);
     return next(error);
@@ -273,7 +275,6 @@ exports.getOne = (Model, populationOpt) => async (req, res, next) => {
   try {
     const { id } = req.params;
     let query = Model.findById(id);
-    if (populationOpt) query = query.populate(populationOpt);
 
     const document = await query;
 
@@ -281,18 +282,7 @@ exports.getOne = (Model, populationOpt) => async (req, res, next) => {
       return next(new ApiError(`No document For this id ${id}`, 404));
     }
 
-    // Use safe localization (if exists). After localization we can still attach translations if needed.
-    let localizedResult = safeLocalize(Model, document, req.locale);
-
-    // If localizedResult is a plain object, safely attach translation fields if present on original doc
-    if (localizedResult && typeof localizedResult === "object") {
-      if (document.title && !localizedResult.translationTitle) localizedResult.translationTitle = document.title;
-      if (document.description && !localizedResult.translationDescription) localizedResult.translationDescription = document.description;
-      if (document.highlights && !localizedResult.translationHighlights) localizedResult.translationHighlights = document.highlights;
-      if (document.content && !localizedResult.translationContent) localizedResult.translationContent = document.content;
-    }
-
-    return res.status(200).json({ data: localizedResult });
+    return res.status(200).json({ data: document });
   } catch (error) {
     console.error("Error fetching document:", error);
     return next(error);
@@ -300,7 +290,8 @@ exports.getOne = (Model, populationOpt) => async (req, res, next) => {
 };
 
 // ---------------- getAll ----------------
-exports.getAll = (Model, modelName = "", populationOpt) =>
+exports.getAll =
+  (Model, modelName = "", populationOpt) =>
   async (req, res, next) => {
     try {
       let filter = {};
@@ -332,9 +323,6 @@ exports.getAll = (Model, modelName = "", populationOpt) =>
 
       const results = await apiFeatures.paginate();
 
-      // Localize results safely
-      const localizedResult = safeLocalize(Model, results, req.locale);
-
       const currentPage = parseInt(req.query.page, 10) || 1;
       const limit = parseInt(req.query.limit, 10) || 50;
       const numberOfPages = Math.ceil(documentsCount / limit);
@@ -342,7 +330,7 @@ exports.getAll = (Model, modelName = "", populationOpt) =>
       if (currentPage < numberOfPages) nextPage = currentPage + 1;
 
       return res.status(200).json({
-        results: Array.isArray(results) ? results.length : (results ? 1 : 0),
+        results: Array.isArray(results) ? results.length : results ? 1 : 0,
         paginationResult: {
           totalCount: documentsCount,
           currentPage,
@@ -350,7 +338,7 @@ exports.getAll = (Model, modelName = "", populationOpt) =>
           numberOfPages,
           nextPage,
         },
-        data: localizedResult,
+        data: results,
       });
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -376,7 +364,7 @@ exports.deleteOne = (Model) => async (req, res, next) => {
       await Model.deleteOne({ _id: id });
     }
 
-return res.status(200).json({ ok: true, deleted: true, id });
+    return res.status(200).json({ ok: true, deleted: true, id });
   } catch (error) {
     console.error("Error deleting document:", error);
     return next(error);

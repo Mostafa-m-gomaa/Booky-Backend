@@ -31,7 +31,7 @@ exports.createSalon = asyncHandler(async (req, res) => {
     openingHours: parsedOpeningHours,
     images,
     slotDuration,
-    ownerId: req.user.id
+    ownerId: req.user._id
   });
 
   res.status(201).json(salon);
