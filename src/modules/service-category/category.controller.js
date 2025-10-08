@@ -1,5 +1,7 @@
 const Category = require("./category.model");
 const { asyncHandler } = require("../../utils/asyncHandler");
+const factory = require("../../utils/handlerFactory");
+
 
 exports.createCategory = asyncHandler(async (req, res) => {
   const { name, description, salonId } = req.body;
@@ -16,12 +18,8 @@ exports.createCategory = asyncHandler(async (req, res) => {
   res.status(201).json(category);
 });
 
-exports.getCategoriesBySalon = asyncHandler(async (req, res) => {
-  const salonId = req.params.salonId;
-  const categories = await Category.find({ salonId }).populate("services");
-  res.json(categories);
-});
 
+exports.getCategories=factory.getAll(Category , 'Category');
 exports.updateCategory = asyncHandler(async (req, res) => {
   const { name, description } = req.body;
   const updated = await Category.findByIdAndUpdate(

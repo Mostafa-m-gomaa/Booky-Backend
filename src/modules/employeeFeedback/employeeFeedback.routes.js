@@ -1,30 +1,36 @@
-// const router = require('express').Router();
-// const { requireAuth } = require('../../middleware/auth');
-// const { requireRole } = require('../../lib/rbac/requireRole');
-// const controller = require('./employeeFeedback.controller');
-
-// // العميل يضيف تقييمات بعد الحجز
-// router.post('/', requireAuth, requireRole(['client']), controller.addEmployeeFeedback);
-
-// // أي حد يقدر يشوف تقييمات موظف معين (أو خليه فقط owner/admin لو عايز)
-// router.get('/:employeeId', requireAuth, controller.getFeedbacksForEmployee);
-
-// module.exports = router;
 
 
 const router = require('express').Router();
 const controller = require('./employeeFeedback.controller');
 const { requireAuth } = require('../../middleware/auth');
+const { requireRole } = require('../../lib/rbac/requireRole');
+const { clientEncryption } = require('./employeeFeedback.model');
 
-// لازم المستخدم يكون عامل لوجين علشان يضيف تقييم
+
 router.use(requireAuth);
 
 router.post('/', controller.addEmployeeFeedback);
 
-// عرض كل التقييمات (تقدر تبعت query param زي ?employeeId=123)
-router.get('/', controller.getAllFeedbacks);
+router.get('/:employeeId',
+    requireRole('admin' , 'owner' , 'super-admin' , 'barber'),
+    (req,res,next)=>{
+        req.filterObj = {employeeId : req.params.employeeId};
+        next();
+    }
+    , controller.getAllFeedbacks);
+router.get('/',
+    requireRole('client'),
+    (req,res,next)=>{
+        req.filterObj = {clientId : req.user._id};
+        next();
+    }
+    , controller.getAllFeedbacks);
 
-// اختيارية: لو عايز راوت مخصص لكل موظف
-router.get('/employee/:employeeId', controller.getFeedbacksForEmployee);
+    router.delete('/:feedbackId',
+       controller.authorizeFeedbackOwner
+        , controller.deleteFeedback);
+    router.put('/:feedbackId',
+       controller.authorizeFeedbackOwner
+        , controller.updateFeedback);
 
 module.exports = router;

@@ -39,10 +39,9 @@ const {
 
 // ───────────────────────────────────────────────────────────
 // Auth required for all routes
-router.post("/forgot-password", forgotPassword);
-router.post("/password/verify-otp", verifyResetOtp);
-router.post("/password/reset", resetPassword);
-
+router.post('/forgot-password', forgotPassword);
+router.post('/password/verify-otp', verifyResetOtp);
+router.post('/password/reset', resetPassword);
 router.use(requireAuth);
 
 // Self info

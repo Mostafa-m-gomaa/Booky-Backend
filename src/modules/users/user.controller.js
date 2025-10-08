@@ -56,7 +56,7 @@ const listBySalonId = asyncHandler(async (req, res) => {
   const { salonId } = req.params;
 
   if (req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, salonId);
+    await assertOwnerOwnsSalon(req.user._id, salonId);
   } else if (req.user.role === "admin") {
     if (!sameSalon(req.user.salonId, salonId)) {
       return res
@@ -76,13 +76,13 @@ const updateMe = asyncHandler(async (req, res) => {
   for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
 
   // ممنوع تغيير role أو salonId من هنا
-  const updated = await User.findByIdAndUpdate(req.user.id, patch, {
+  const updated = await User.findByIdAndUpdate(req.user._id, patch, {
     new: true,
   }).select("-passwordHash");
   res.json(sanitize(updated));
 });
 const getMe = asyncHandler(async (req, res) => {
-  const me = await User.findById(req.user.id).select("-passwordHash").lean();
+  const me = await User.findById(req.user?._id).select("-passwordHash").lean();
   res.json(sanitize(me));
 });
 
@@ -96,9 +96,9 @@ const updateProfilePicture = asyncHandler(async (req, res) => {
   // 1) صاحب الأكاونت نفسه
   // 2) owner يملك صالونه
   // 3) admin في نفس الصالون
-  let allowed = req.user.id === targetUserId;
+  let allowed = req.user._id === targetUserId;
   if (!allowed && req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    await assertOwnerOwnsSalon(req.user._id, target.salonId);
     allowed = true;
   } else if (!allowed && req.user.role === "admin") {
     allowed = sameSalon(req.user.salonId, target.salonId);
@@ -122,7 +122,7 @@ const createAdmin = asyncHandler(async (req, res) => {
       .status(400)
       .json({ message: "name, phone, password, salonId are required" });
   }
-  await assertOwnerOwnsSalon(req.user.id, salonId);
+  await assertOwnerOwnsSalon(req.user._id, salonId);
 
   const passwordHash = await bcrypt.hash(password, 10);
   const admin = await User.create({
@@ -162,7 +162,7 @@ const createEmployee = asyncHandler(async (req, res) => {
 
   // الصلاحيات حسب دور المُنشِئ
   if (req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, salonId);
+    await assertOwnerOwnsSalon(req.user._id, salonId);
   } else if (req.user.role === "admin") {
     if (!sameSalon(req.user.salonId, salonId)) {
       return res
@@ -219,9 +219,9 @@ const updateEmployeeSchedule = asyncHandler(async (req, res) => {
   }
 
   // ✅ السماح للموظف نفسه + المالك/الأدمن لنفس الصالون
-  let allowed = req.user.id === id;
+  let allowed = req.user._id === id;
   if (!allowed && req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, employee.salonId);
+    await assertOwnerOwnsSalon(req.user._id, employee.salonId);
     allowed = true;
   } else if (!allowed && req.user.role === "admin") {
     allowed = String(req.user.salonId) === String(employee.salonId);
@@ -277,7 +277,7 @@ const updateUserRole = asyncHandler(async (req, res) => {
   const user = await User.findById(id);
   if (!user) return res.status(404).json({ message: "User not found" });
 
-  await assertOwnerOwnsSalon(req.user.id, user.salonId);
+  await assertOwnerOwnsSalon(req.user._id, user.salonId);
 
   if (!["admin", "barber", "specialist", "client"].includes(role)) {
     return res.status(400).json({ message: "Invalid role" });
@@ -297,7 +297,7 @@ const toggleUserActive = asyncHandler(async (req, res) => {
   if (!user) return res.status(404).json({ message: "User not found" });
 
   if (req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, user.salonId);
+    await assertOwnerOwnsSalon(req.user._id, user.salonId);
   } else if (req.user.role === "admin") {
     if (!sameSalon(req.user.salonId, user.salonId)) {
       return res.status(403).json({ message: "Forbidden" });
@@ -323,9 +323,9 @@ const listEmployeeBlocks = asyncHandler(async (req, res) => {
   if (!["barber", "specialist"].includes(target.role))
     return res.status(400).json({ message: "User is not an employee" });
 
-  let allowed = req.user.id === id;
+  let allowed = req.user._id === id;
   if (!allowed && req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    await assertOwnerOwnsSalon(req.user._id, target.salonId);
     allowed = true;
   } else if (!allowed && req.user.role === "admin") {
     allowed = String(req.user.salonId) === String(target.salonId);
@@ -342,9 +342,9 @@ const addEmployeeBlock = asyncHandler(async (req, res) => {
   if (!["barber", "specialist"].includes(target.role))
     return res.status(400).json({ message: "User is not an employee" });
 
-  let allowed = req.user.id === id;
+  let allowed = req.user._id === id;
   if (!allowed && req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    await assertOwnerOwnsSalon(req.user._id, target.salonId);
     allowed = true;
   } else if (!allowed && req.user.role === "admin") {
     allowed = String(req.user.salonId) === String(target.salonId);
@@ -419,9 +419,9 @@ const deleteEmployeeBlock = asyncHandler(async (req, res) => {
   const target = await User.findById(id);
   if (!target) return res.status(404).json({ message: "User not found" });
 
-  let allowed = req.user.id === id;
+  let allowed = req.user._id === id;
   if (!allowed && req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, target.salonId);
+    await assertOwnerOwnsSalon(req.user._id, target.salonId);
     allowed = true;
   } else if (!allowed && req.user.role === "admin") {
     allowed = String(req.user.salonId) === String(target.salonId);
@@ -523,7 +523,7 @@ const deleteUserFromSalon = asyncHandler(async (req, res) => {
 
   // صلاحيات المُمثّل
   if (req.user.role === "owner") {
-    await assertOwnerOwnsSalon(req.user.id, salonId);
+    await assertOwnerOwnsSalon(req.user._id, salonId);
     if (["owner"].includes(target.role)) {
       return res
         .status(403)
@@ -546,7 +546,7 @@ const deleteUserFromSalon = asyncHandler(async (req, res) => {
 
   // منع حذف نفسك بالخطأ (اختياري)
   if (
-    String(req.user.id) === String(target._id) &&
+    String(req.user._id) === String(target._id) &&
     req.user.role !== "super-admin"
   ) {
     return res
@@ -584,7 +584,7 @@ const filterUsersBasedOnRole = async (req, res, next) => {
       req.filterObj = { salonId: req.query.salonId };
       return next();
     } else {
-      const salons = await Salon.find({ ownerId: req.user.id }).select("_id");
+      const salons = await Salon.find({ ownerId: req.user._id }).select("_id");
       const salonIds = salons.map((salon) => salon._id);
       if (salonIds.length === 0) {
         req.filterObj = { salonId: null }; // no salons, return empty

@@ -9,6 +9,9 @@ const dayjs = require('dayjs');
 const { sendBookingNotification } = require('../../utils/notifications');
 const Coupon = require('../coupons/coupon.model');
 const CouponRedemption = require('../coupons/couponRedemption.model');
+const handlerFactory = require('../../utils/handlerFactory');
+const axios = require('axios');
+const mongoose = require('mongoose');
 
 // helpers
 function dayKeyOf(dateISO) {
@@ -71,73 +74,6 @@ function overlapsAny(intervals, start, end) {
 function calculateEndTime(start, duration) {
   return dayjs(start).add(duration, 'minute').toDate();
 }
-
-// 🔔 Util: إرسال إشعار واتساب
-// async function sendBookingNotification(booking, action) {
-//   const message = `تم ${action} للحجز رقم: ${booking._id}`;
-//   const recipients = await User.find({ salonId: booking.salonId });
-
-//   for (const user of recipients) {
-//     if (user.phone) {
-//       await axios.post('https://api.wasender.io/send', {
-//         to: user.phone,
-//         message,
-//       });
-//     }
-//   }
-// }
-
-// 🟢 1. إنشاء حجز
-// exports.createBooking = asyncHandler(async (req, res) => {
-//   const { clientName, clientPhone, date, startTime, selections,salonId } = req.body;
-  
-
-//   let current = dayjs(`${date} ${startTime}`);
-//   const serviceMap = {};
-//   const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
-
-//   let totalPrice = 0;
-//   services.forEach(s => {
-//     const duration = (s.durationMin ?? s.duration);
-//     serviceMap[s._id] = { duration, price: s.price };
-//     totalPrice += s.price;
-//   });
-
-//   const servicesWithTime = selections.map(s => {
-//     const start = current.toDate();
-//     const end = dayjs(start).add(serviceMap[s.serviceId].duration, 'minute').toDate();
-//     current = dayjs(end);
-//     return {
-//       serviceId: s.serviceId,
-//       employeeId: s.employeeId,
-//       start,
-//       end,
-//       price: serviceMap[s.serviceId].price
-//     };
-//   });
-
-//   const totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId].duration, 0);
-
-//   // (اختياري) اربط بالهاتف
-//   let clientId = req.user?.role === 'client' ? req.user._id : undefined;
-//   if (!clientId && clientPhone) {
-//     const existing = await User.findOne({ phone: clientPhone }).select('_id');
-//     if (existing) clientId = existing._id;
-//   }
-
-//   const booking = await Booking.create({
-//     clientName, clientPhone, salonId,
-//     services: servicesWithTime,
-//     totalDuration, totalPrice,
-//     date: dayjs(date).startOf('day').toDate(),
-//     clientId,
-//     status: 'scheduled'
-//   });
-// sendBookingNotification(booking, 'book').catch((e) => {
-//   console.warn('notify(book) failed:', e?.response?.data || e.message);
-// });
-//   res.status(201).json(booking);
-// });
 
 exports.createBooking = asyncHandler(async (req, res) => {
   const { clientName, clientPhone, date, startTime, selections, salonId, couponCode } = req.body;
@@ -320,13 +256,8 @@ exports.getAvailableSlots = asyncHandler(async (req, res) => {
 
 
 // 🟢 3. استعلامات الحجز حسب الدور (client - barber - admin)
-exports.getMyBookings = asyncHandler(async (req, res) => {
-  const filter = req.user.role === 'client'
-    ? { clientId: req.user._id }
-    : { 'services.employeeId': req.user._id };
-  const bookings = await Booking.find(filter).sort({ date: -1 });
-  res.json(bookings);
-});
+exports.getBookings = handlerFactory.getAll(Booking);
+
 
 // 🟢 4. إلغاء الحجز
 exports.cancelBooking = asyncHandler(async (req, res) => {
@@ -334,8 +265,8 @@ exports.cancelBooking = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id);
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
-  const isOwner = req.user.role === 'client' && booking.clientId?.toString() === req.user.id;
-  const isEmployee = ['barber', 'specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user.id);
+  const isOwner = req.user.role === 'client' && booking.clientId?.toString() === req.user._id;
+  const isEmployee = ['barber', 'specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user._id);
   const isAdmin = ['admin', 'owner'].includes(req.user.role);
 
   if (!isOwner && !isEmployee && !isAdmin) return res.status(403).json({ message: 'Not allowed' });
@@ -354,8 +285,8 @@ exports.editBooking = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id);
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
-  const isOwner = req.user.role === 'client' && booking.clientId?.toString() === req.user.id;
-  const isEmployee = ['barber','specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user.id);
+  const isOwner = req.user.role === 'client' && booking.clientId?.toString() === req.user._id;
+  const isEmployee = ['barber','specialist'].includes(req.user.role) && booking.services.some(s => s.employeeId.toString() === req.user._id);
   const isAdmin = ['admin','owner'].includes(req.user.role);
   if (!isOwner && !isEmployee && !isAdmin) return res.status(403).json({ message: 'Not allowed' });
 
@@ -449,23 +380,7 @@ exports.editBookingByAdmin = asyncHandler(async (req, res) => {
   res.json(updated);
 });
 
-exports.getSalonBookings = asyncHandler(async (req, res) => {
-  const salonId = req.params.id;
 
-  // لو موظف، رجّع بس الحجوزات اللي ليه هو
-  if (['barber'].includes(req.user.role))  {
-    const bookings = await Booking.find({
-      salonId,
-      'services.employeeId': req.user._id
-    }).sort({ date: -1 });
-
-    return res.json(bookings);
-  }
-
-  // غير كده (owner/admin): رجّع كل حجوزات الصالون
-  const bookings = await Booking.find({ salonId }).sort({ date: -1 });
-  res.json(bookings);
-});
 
 
 exports.cancelBookingByEmployee = asyncHandler(async (req, res) => {
@@ -473,7 +388,7 @@ exports.cancelBookingByEmployee = asyncHandler(async (req, res) => {
   const booking = await Booking.findOne({ _id: req.params.id });
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
-  const isRelated = booking.services.some(s => s.employeeId.toString() === req.user.id);
+  const isRelated = booking.services.some(s => s.employeeId.toString() === req.user._id);
   if (!isRelated) return res.status(403).json({ message: 'Not authorized' });
 
   booking.status = 'cancelled';
@@ -487,54 +402,14 @@ exports.cancelBookingByEmployee = asyncHandler(async (req, res) => {
 
 
 
-exports.editBookingByEmployee = asyncHandler(async (req, res) => {
-  const { selections, date, startTime, reason } = req.body;
-
-  const booking = await Booking.findOne({ _id: req.params.id });
-  if (!booking) return res.status(404).json({ message: 'Booking not found' });
-
-  const isRelated = booking.services.some(s => s.employeeId.toString() === req.user.id);
-  if (!isRelated) return res.status(403).json({ message: 'Not authorized' });
-
-  const serviceMap = {};
-  const services = await Service.find({ _id: { $in: selections.map(s => s.serviceId) } });
-  services.forEach(s => (serviceMap[s._id] = s.durationMin));
-
-  let current = dayjs(`${date} ${startTime}`);
-  const servicesWithTime = selections.map(s => {
-    const start = current.toDate();
-    const end = calculateEndTime(current, serviceMap[s.serviceId]);
-    current = dayjs(end);
-    return {
-      serviceId: s.serviceId,
-      employeeId: s.employeeId,
-      start,
-      end
-    };
-  });
-
-  booking.services = servicesWithTime;
-  booking.totalDuration = servicesWithTime.reduce((acc, s) => acc + serviceMap[s.serviceId], 0);
-  booking.date = dayjs(date).startOf('day').toDate();
-  booking.editReason = reason;
-  booking.status = 'rescheduled';
-  await booking.save();
-
-  await sendBookingNotification(booking, 'edited_by_employee');
-  res.json(booking);
-});
 
 
-exports.getEmployeeBookings = asyncHandler(async (req, res) => {
-  const bookings = await Booking.find({ 'services.employeeId': req.user.id }).sort({ date: -1 });
-  res.json(bookings);
-});
 
 
 exports.cancelBookingByClient = asyncHandler(async (req, res) => {
   const { reason } = req.body;
   const booking = await Booking.findOneAndUpdate(
-    { _id: req.params.id, clientId: req.user.id },
+    { _id: req.params.id, clientId: req.user._id },
     { status: 'cancelled', cancelReason: reason },
     { new: true }
   );
@@ -548,7 +423,7 @@ exports.cancelBookingByClient = asyncHandler(async (req, res) => {
 exports.updateBookingByClient = asyncHandler(async (req, res) => {
   const { selections, date, startTime, reason } = req.body;
 
-  const booking = await Booking.findOne({ _id: req.params.id, clientId: req.user.id });
+  const booking = await Booking.findOne({ _id: req.params.id, clientId: req.user._id });
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
   const serviceMap = {};
@@ -575,14 +450,7 @@ exports.updateBookingByClient = asyncHandler(async (req, res) => {
 });
 
 
-// const Booking = require('./booking.model');
-// const Service = require('../services/service.model');
-// const User    = require('../users/user.model');
-// const { asyncHandler } = require('../../utils/asyncHandler');
-// const dayjs = require('dayjs');
-// ... لو عندك calculateEndTime و sendBookingNotification بالفعل فوق، سيبهم زي ما هم
 
-// 🔹 1) إنشاء حجز بواسطة موظف (لنفسه فقط)
 exports.createBookingByEmployee = asyncHandler(async (req, res) => {
   const { clientName, clientPhone, date, startTime, selections } = req.body;
   const salonId = req.tenant.salonId;
@@ -684,10 +552,8 @@ exports.markCompleted = asyncHandler(async (req, res) => {
 
 exports.getClientsBookingsSummary = asyncHandler(async (req, res) => {
   // هنجيب صالون الـ tenant أو من params/query احتياطيًا
-  const salonId =
-    req?.tenant?.salonId ||
-    req.params.salonId ||
-    req.query.salonId;
+  const salonId =req.params?.salonId 
+    
 
   if (!salonId) {
     return res.status(400).json({ message: 'salonId is required' });

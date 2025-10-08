@@ -13,7 +13,7 @@ router.post(
   upload.single("image"),
   ctrl.createCategory
 );
-router.get("/:salonId", requireAuth, ctrl.getCategoriesBySalon);
+router.get("/:salonId",  ctrl.getCategories);
 router.put(
   "/:id",
   requireAuth,

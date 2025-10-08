@@ -9,7 +9,10 @@ const controller = require("./salon.controller");
 router.get(
   "/",
   (req, res, next) => {
-    req.filterObj = { isActive: true };
+    if(req.user?.role !== "super-admin"){
+req.filterObj = { isActive: true };
+}
+next()
   },
   controller.getAllSalons
 );
@@ -18,9 +21,10 @@ router.get(
   "/getAll",
   requireAuth,
   (req, res, next) => {
-    if (req.user.role === "owner") {
+    if (req.user?.role === "owner") {
       req.filterObj = { ownerId: req.user._id };
     }
+    next()
   },
   controller.getAllSalons
 );

@@ -7,7 +7,7 @@ const handlerFactory = require('../../utils/handlerFactory');
 exports.createFeedback = asyncHandler(async (req, res) => {
   const { bookingId, rating, comment } = req.body;
 
-  const booking = await Booking.findOne({ _id: bookingId, clientId: req.user.id });
+  const booking = await Booking.findOne({ _id: bookingId, clientId: req.user._id });
   if (!booking) return res.status(404).json({ message: 'Booking not found or not yours' });
 
   if (booking.status !== 'completed') {
@@ -20,7 +20,7 @@ exports.createFeedback = asyncHandler(async (req, res) => {
   const feedback = await Feedback.create({
     bookingId,
     salonId: booking.salonId,
-    clientId: req.user.id,
+    clientId: req.user._id,
     rating,
     comment,
   });

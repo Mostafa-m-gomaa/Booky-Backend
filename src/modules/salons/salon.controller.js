@@ -39,7 +39,7 @@ exports.createSalon = asyncHandler(async (req, res) => {
 
 // ✅ تعديل صالون (له منطق خاص بالصور)
 exports.updateSalon = asyncHandler(async (req, res) => {
-  const salon = await Salon.findOne({ _id: req.params.id, ownerId: req.user.id });
+  const salon = await Salon.findOne({ _id: req.params.id, ownerId: req.user._id });
   if (!salon) return res.status(404).json({ message: 'Salon not found' });
 
   if (req.files && req.files.length > 0) {
@@ -56,7 +56,7 @@ exports.updateSalon = asyncHandler(async (req, res) => {
 exports.deleteSalon = asyncHandler(async (req, res) => {
   const salon = await Salon.findOneAndDelete({
     _id: req.params.id,
-    ownerId: req.user.id
+    ownerId: req.user._id
   });
 
   if (!salon) return res.status(404).json({ message: 'Salon not found' });
@@ -66,7 +66,7 @@ exports.deleteSalon = asyncHandler(async (req, res) => {
 
 // ✅ getMySalons (صالونات المالك فقط)
 exports.getMySalons = asyncHandler(async (req, res) => {
-  const salons = await Salon.find({ ownerId: req.user.id });
+  const salons = await Salon.find({ ownerId: req.user._id });
   res.json(salons);
 });
 

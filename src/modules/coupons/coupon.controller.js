@@ -4,6 +4,7 @@ const CouponRedemption = require('./couponRedemption.model');
 const Salon = require('../salons/salon.model');
 const User  = require('../users/user.model');
 const { asyncHandler } = require('../../utils/asyncHandler');
+const handlerFactory = require('../../utils/handlerFactory');
 const mongoose = require('mongoose');
 const dayjs = require('dayjs');
 
@@ -50,7 +51,7 @@ exports.createCoupon = asyncHandler(async (req, res) => {
 
   // لو owner: تأكد فعلاً يملك الصالونات
   if (req.user.role === 'owner') {
-    const count = await Salon.countDocuments({ _id: { $in: salonsFinal }, ownerId: req.user.id });
+    const count = await Salon.countDocuments({ _id: { $in: salonsFinal }, ownerId: req.user._id });
     if (count !== salonsFinal.length) return res.status(403).json({ message: 'You must own all salons' });
   }
 
@@ -83,7 +84,7 @@ exports.updateCoupon = asyncHandler(async (req, res) => {
   if (req.user.role === 'super-admin') {
     // كله مسموح
   } else if (req.user.role === 'owner') {
-    const count = await Salon.countDocuments({ _id: { $in: (coupon.global ? req.body.salons || [] : coupon.salons) }, ownerId: req.user.id });
+    const count = await Salon.countDocuments({ _id: { $in: (coupon.global ? req.body.salons || [] : coupon.salons) }, ownerId: req.user._id });
     if (!coupon.global && count !== (coupon.salons || []).length) {
       return res.status(403).json({ message: 'You can edit only coupons of your salons' });
     }
@@ -114,7 +115,7 @@ exports.toggleCoupon = asyncHandler(async (req, res) => {
   if (req.user.role === 'super-admin') { /* ok */ }
   else if (req.user.role === 'owner') {
     if (coupon.global) return res.status(403).json({ message: 'Owner cannot toggle global coupon' });
-    const count = await Salon.countDocuments({ _id: { $in: coupon.salons }, ownerId: req.user.id });
+    const count = await Salon.countDocuments({ _id: { $in: coupon.salons }, ownerId: req.user._id });
     if (count !== coupon.salons.length) return res.status(403).json({ message: 'Not allowed' });
   } else if (req.user.role === 'admin') {
     const ok = !coupon.global && coupon.salons.every(s => String(s) === String(req.user.salonId));
@@ -127,14 +128,15 @@ exports.toggleCoupon = asyncHandler(async (req, res) => {
 });
 
 // GET /coupons (فلترة حسب الصالون أو الكود)
-exports.listCoupons = asyncHandler(async (req, res) => {
-  const { salonId, code } = req.query;
-  const q = {};
-  if (code) q.code = String(code).toUpperCase();
-  if (salonId) q.$or = [{ global: true }, { salons: new mongoose.Types.ObjectId(String(salonId)) }];
-  res.json(await Coupon.find(q).sort({ createdAt: -1 }));
-});
+// exports.listCoupons = asyncHandler(async (req, res) => {
+//   const { salonId, code } = req.query;
+//   const q = {};
+//   if (code) q.code = String(code).toUpperCase();
+//   if (salonId) q.$or = [{ global: true }, { salons: new mongoose.Types.ObjectId(String(salonId)) }];
+//   res.json(await Coupon.find(q).sort({ createdAt: -1 }));
+// });
 
+exports.listCoupons = handlerFactory.getAll(Coupon);
 // POST /coupons/validate  { salonId, clientId?, clientPhone?, total, code }
 exports.validateCoupon = asyncHandler(async (req, res) => {
   const { salonId, code, total, clientId, clientPhone } = req.body;

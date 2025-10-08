@@ -16,7 +16,15 @@ router.patch('/:id', requireRole(['super-admin','owner','admin']), ctrl.updateCo
 router.patch('/:id/toggle', requireRole(['super-admin','owner','admin']), ctrl.toggleCoupon);
 
 // عرض/تحقق
-router.get('/', requireRole(['super-admin','owner','admin']), ctrl.listCoupons);
+router.get('/', requireRole(['super-admin']),
+ctrl.listCoupons);
+router.get('/:salonId', requireRole(['super-admin','owner','admin']),
+(req, res, next) => {
+  req.filterObj = { salons: req.params.salonId };
+  next();
+}
+,
+ctrl.listCoupons);
 router.post('/validate', ctrl.validateCoupon); // ممكن تخليها public عشان الـ app يتحقق قبل الدفع
 
 module.exports = router;
