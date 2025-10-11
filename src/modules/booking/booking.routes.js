@@ -14,13 +14,17 @@ router.get('/my', requireRole(['client']),
   next();
 }
 ,controller.getBookings);
+
+
 router.get('/client/:clientId', requireRole(['owner', 'admin', 'super-admin', 'barber']), 
 (req, res, next) => {
   req.objFilter = { clientId: req.params.clientId };
   next();
 }
 ,controller.getBookings);
+
 router.put('/:id/edit', requireRole(['client']), controller.updateBookingByClient);
+
 router.delete('/:id/cancel', requireRole(['client']), controller.cancelBookingByClient);
 // router.post('/book',requireRole(['client']), controller.createBooking);
 router.post('/book', controller.createBooking);

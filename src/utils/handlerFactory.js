@@ -295,17 +295,12 @@ exports.getAll =
   async (req, res, next) => {
     try {
       let filter = {};
-
-      if (req.filterObj) {
-        filter = req.filterObj;
-      }
-
-      if (Object.keys(filter).length === 0) {
-        const excludesFields = ["page", "sort", "limit", "fields"];
-        const queryObj = { ...req.query };
-        excludesFields.forEach((field) => delete queryObj[field]);
-        filter = { ...queryObj };
-      }
+      filter = req.filterObj || req.objFilter;
+      //compine between custom filter(req.filterObj) and req.query
+      const excludesFields = ["page", "sort", "limit", "fields"];
+      const queryObj = { ...req.query };
+      excludesFields.forEach((field) => delete queryObj[field]);
+      filter = { ...filter, ...queryObj };
 
       // Count total
       const documentsCount = await Model.countDocuments(filter);

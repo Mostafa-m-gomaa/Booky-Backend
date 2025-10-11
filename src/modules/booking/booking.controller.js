@@ -1,6 +1,3 @@
-
-
-
 const Booking = require('./booking.model');
 const Service = require('../services/service.model');
 const User = require('../users/user.model');
@@ -398,12 +395,6 @@ exports.cancelBookingByEmployee = asyncHandler(async (req, res) => {
   await sendBookingNotification(booking, 'cancelled_by_employee');
   res.json(booking);
 });
-
-
-
-
-
-
 
 
 exports.cancelBookingByClient = asyncHandler(async (req, res) => {

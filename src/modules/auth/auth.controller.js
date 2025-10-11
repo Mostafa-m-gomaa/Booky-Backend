@@ -274,4 +274,25 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ ok: true });
 });
 
-module.exports = { register, login, me, refresh, logout, resendOtp, verifyOtp };
+const allowedTo = (...roles) =>
+  asyncHandler(async (req, res, next) => {
+    //1- access roles
+    //2- access registered user (req.user.role)
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new ApiError("you are not allowed to access this route", 403)
+      );
+    }
+    next();
+  });
+
+module.exports = {
+  register,
+  login,
+  me,
+  refresh,
+  logout,
+  resendOtp,
+  verifyOtp,
+  allowedTo,
+};
