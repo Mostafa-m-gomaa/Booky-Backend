@@ -9,6 +9,7 @@ const OpeningHourSchema = new Schema({
 
 const SalonSchema = new Schema({
   name: { type: String, required: true },
+  description: { type: String, required: true },
   area: { type: String, required: true },
   slotDuration: { type: Number, default: 10 }, // minutes
   ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },

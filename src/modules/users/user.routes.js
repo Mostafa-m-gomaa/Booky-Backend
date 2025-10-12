@@ -35,6 +35,10 @@ const {
   getUser,
   getUsers,
   filterUsersBasedOnRole,
+  // wishlist
+  addToWishlist,
+  removeFromWishlist,
+  getWishlist
 } = require("./user.controller");
 
 // ───────────────────────────────────────────────────────────
@@ -136,4 +140,8 @@ router.put(
   toggleUserActive
 );
 
+// ───────────────── Wishlist ─────────────────
+router.post('/wishlist', requireRole('client'), addToWishlist);
+router.delete('/wishlist/:salonId', requireRole('client'), removeFromWishlist);
+router.get('/wishlist', requireRole('client'), getWishlist);
 module.exports = router;

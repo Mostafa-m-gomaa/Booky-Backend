@@ -77,7 +77,7 @@ const UserSchema = new Schema(
     resetTokenExpires: { type: Date },
 
     noShowCount: { type: Number, default: 0 },
-
+wishlist: [{ type: Schema.Types.ObjectId, ref: 'Salon' }],
     employeeData: {
       services: [{ type: Schema.Types.ObjectId, ref: "Service" }],
       // workingDays: [{ type: String, enum: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] }],

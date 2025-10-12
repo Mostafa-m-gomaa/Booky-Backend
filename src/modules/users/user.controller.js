@@ -598,6 +598,89 @@ const filterUsersBasedOnRole = async (req, res, next) => {
   return next();
 };
 // ───────────────────────── exports ─────────────────────────
+
+// ───────────────────────── wishlist (client only) ─────────────────────────
+
+// ✅ جديد: إضافة صالون للـ wishlist (client فقط)
+const addToWishlist = asyncHandler(async (req, res) => {
+  const { salonId } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(salonId)) {
+    return res.status(400).json({ message: 'Invalid salon ID' });
+  }
+
+  if (req.user.role !== 'client') {
+    return res.status(403).json({ message: 'Only clients can manage wishlist' });
+  }
+
+  // تحقق إن الصالون موجود وactive
+  const salon = await Salon.findOne({ _id: salonId, isActive: true });
+  if (!salon) {
+    return res.status(404).json({ message: 'Salon not found or inactive' });
+  }
+
+  // أضف لو مش موجود (استخدم $addToSet عشان no duplicates)
+  const updated = await User.findByIdAndUpdate(
+    req.user._id,
+    { $addToSet: { wishlist: salonId } },  // يضيف لو مش موجود
+    { new: true, runValidators: true }
+  ).select('wishlist').populate('wishlist', 'name address rating');  // populate للـ details
+
+  res.status(200).json({
+    success: true,
+    data: {
+      wishlist: updated.wishlist,
+      message: 'Salon added to wishlist'
+    }
+  });
+});
+
+// ✅ جديد: حذف صالون من الـ wishlist (client فقط)
+const removeFromWishlist = asyncHandler(async (req, res) => {
+  const { salonId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(salonId)) {
+    return res.status(400).json({ message: 'Invalid salon ID' });
+  }
+
+  if (req.user.role !== 'client') {
+    return res.status(403).json({ message: 'Only clients can manage wishlist' });
+  }
+
+  // احذف لو موجود
+  const updated = await User.findByIdAndUpdate(
+    req.user._id,
+    { $pull: { wishlist: salonId } },  // يحذف لو موجود
+    { new: true, runValidators: true }
+  ).select('wishlist').populate('wishlist', 'name address rating');
+
+  res.status(200).json({
+    success: true,
+    data: {
+      wishlist: updated.wishlist,
+      message: 'Salon removed from wishlist'
+    }
+  });
+});
+
+// ✅ جديد: جلب الـ wishlist (client فقط، مع populate)
+const getWishlist = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'client') {
+    return res.status(403).json({ message: 'Only clients can view wishlist' });
+  }
+
+  const user = await User.findById(req.user._id)
+    .select('wishlist')
+    .populate('wishlist', 'name address rating avatar isActive');  // populate details مفيدة
+
+  res.status(200).json({
+    success: true,
+    data: {
+      wishlist: user.wishlist || [],
+      count: user.wishlist.length
+    }
+  });
+});
 module.exports = {
   // listing
   list,
@@ -629,4 +712,8 @@ module.exports = {
   deleteUserFromSalon,
   filterUsersBasedOnRole,
   getUsers,
+  addToWishlist,
+  removeFromWishlist,
+  getWishlist
+
 };

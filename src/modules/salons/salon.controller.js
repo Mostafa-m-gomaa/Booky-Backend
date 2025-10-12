@@ -11,7 +11,7 @@ const { asyncHandler } = require('../../utils/asyncHandler');
 
 // ✅ إنشاء صالون جديد (له منطق خاص بالصورة وفتح الأوقات)
 exports.createSalon = asyncHandler(async (req, res) => {
-  const { name, type, address, phone, location, openingHours , area ,slotDuration } = req.body;
+  const { name, type, address, phone, location, openingHours , area ,slotDuration ,description } = req.body;
   const images = req.files.map(file => file.path);
 
   let parsedOpeningHours = [];
@@ -31,7 +31,8 @@ exports.createSalon = asyncHandler(async (req, res) => {
     openingHours: parsedOpeningHours,
     images,
     slotDuration,
-    ownerId: req.user._id
+    ownerId: req.user._id,
+    description
   });
 
   res.status(201).json(salon);

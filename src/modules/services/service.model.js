@@ -5,6 +5,7 @@ const ServiceSchema = new Schema({
   name: { type: String, required: true },
   description: String,
   price: { type: Number, required: true },
+  priceAfterDiscount: Number,
   images: [String] ,
   durationMin: { type: Number, required: true },
   salonId: { type: Schema.Types.ObjectId, ref: 'Salon', required: true },

@@ -1,5 +1,3 @@
-
-
 const router = require('express').Router();
 const controller = require('./employeeFeedback.controller');
 const { requireAuth } = require('../../middleware/auth');
@@ -8,9 +6,7 @@ const { clientEncryption } = require('./employeeFeedback.model');
 
 
 router.use(requireAuth);
-
 router.post('/', controller.addEmployeeFeedback);
-
 router.get('/:employeeId',
     requireRole('admin' , 'owner' , 'super-admin' , 'barber'),
     (req,res,next)=>{
@@ -32,5 +28,8 @@ router.get('/',
     router.put('/:feedbackId',
        controller.authorizeFeedbackOwner
         , controller.updateFeedback);
+
+
+    router.get('/:employeeId/average-rating', controller.getEmployeeAverageRating);
 
 module.exports = router;

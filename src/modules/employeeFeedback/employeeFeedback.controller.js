@@ -13,7 +13,7 @@ exports.authorizeFeedbackOwner = async (req, res, next) => {
     }
 
     // req.user._id ممكن يكون ObjectId، فا نستخدم equals أو toString
-    if (feedback.client && feedback.client.equals && feedback.client.equals(req.user._id)) {
+    if (feedback.clientId.equals(req.user._id) || req.user?.role === 'super-admin') {
       // المالك فعلاً
       return next();
     }
@@ -51,3 +51,35 @@ exports.getAllFeedbacks = handlerFactory.getAll(EmployeeFeedback);
 exports.deleteFeedback = handlerFactory.deleteOne(EmployeeFeedback);
 exports.updateFeedback = handlerFactory.updateOne(EmployeeFeedback);
 
+const mongoose = require('mongoose'); // لو مش موجود، أضفه في أعلى الملف
+
+// ✅ جديد: الحصول على متوسط التقييم لموظف
+exports.getEmployeeAverageRating = asyncHandler(async (req, res) => {
+  const { employeeId } = req.params;
+
+  // تحقق إن employeeId صالح
+  if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    return next(new ApiError('Invalid employee ID', 400));
+  }
+
+  const avgRating = await EmployeeFeedback.aggregate([
+    {
+      $match: { employeeId: new mongoose.Types.ObjectId(employeeId) } // فلترة حسب الموظف
+    },
+    {
+      $group: {
+        _id: null,
+        averageRating: { $avg: '$rating' }, // حساب المتوسط
+        totalRatings: { $sum: 1 } // عدد التقييمات (اختياري، عشان تعرف كام تقييم)
+      }
+    }
+  ]);
+
+  const result = avgRating[0] || { averageRating: 0, totalRatings: 0 };
+  result.averageRating = Math.round(result.averageRating * 10) / 10; // تقريب لـ 1 رقم عشري (مثل 4.2)
+
+  res.status(200).json({
+    success: true,
+    data: result
+  });
+});
