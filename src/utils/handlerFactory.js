@@ -295,7 +295,7 @@ exports.getAll =
   async (req, res, next) => {
     try {
       let filter = {};
-      filter = req.filterObj || req.objFilter;
+      filter = req.filterObj || req.filterObj;
       //compine between custom filter(req.filterObj) and req.query
       const excludesFields = ["page", "sort", "limit", "fields"];
       const queryObj = { ...req.query };

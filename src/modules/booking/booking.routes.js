@@ -10,7 +10,7 @@ const { requireRole } = require('../../lib/rbac/requireRole');
 // 📌 Client routes
 router.get('/my', requireRole(['client']), 
 (req, res, next) => {
-  req.objFilter = { clientId: req.user._id };
+  req.filterObj = { clientId: req.user._id };
   next();
 }
 ,controller.getBookings);
@@ -18,7 +18,7 @@ router.get('/my', requireRole(['client']),
 
 router.get('/client/:clientId', requireRole(['owner', 'admin', 'super-admin', 'barber']), 
 (req, res, next) => {
-  req.objFilter = { clientId: req.params.clientId };
+  req.filterObj = { clientId: req.params.clientId };
   next();
 }
 ,controller.getBookings);
@@ -36,7 +36,7 @@ router.post('/slots', controller.getAvailableSlots);
 // 🧑‍💼 Routes for employees
 router.get('/employee/my', requireRole(['barber']), 
 (req, res, next) => {
-  req.objFilter = { employeeId: req.user._id };
+  req.filterObj = { employeeId: req.user._id };
   next();
 }, controller.getBookings);
 
@@ -51,7 +51,7 @@ router.post('/:id/complete',requireRole(['barber','owner','admin' ,'super-admin'
 router.get('/salon/:salonId', 
   requireRole(['owner', 'admin', 'super-admin' , 'barber']),
   (req, res, next) => {
-    req.objFilter = { salonId: req.params.salonId };
+    req.filterObj = { salonId: req.params.salonId };
     next();
   }, controller.getBookings);
 router.put('/:id/edit-admin', requireRole(['owner', 'admin', 'super-admin']), controller.editBookingByAdmin);
