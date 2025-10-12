@@ -13,7 +13,7 @@ const router = express.Router();
 
 // for admin and instructors
 router.get(
-  "/getAll",
+  "/",
   requireAuth,
   requireRole(["admin", "super-admin", "owner"]),
   packageService.filterInstructorPackages,
@@ -23,20 +23,24 @@ router.get(
 //get package for specific salon
 // user portal
 router
-  .route("/salonId")
-  .get(packageService.filterPackages, packageService.getAll)
-  .post(
-    requireAuth,
-    requireRole(["admin", "super-admin", "owner"]),
-    createPackageValidator,
-    packageService.createOne
-  );
+  .route("/:salonId")
+  .get(packageService.filterPackages, packageService.getAll);
+
+router.post(
+  "/",
+  requireAuth,
+  requireRole(["admin", "super-admin", "owner"]),
+  createPackageValidator,
+  packageService.createOne
+);
+
+router.route("/getOne/:id").get(packageIdValidator, packageService.getOne);
 router
   .route("/:id")
-  .get(packageIdValidator, packageService.getOne)
-  .put(
+  .patch(
     requireAuth,
     requireRole(["admin", "super-admin", "owner"]),
+    packageService.isTheCurrentUserOwnerOfSalon,
     packageIdValidator,
     updatePackageValidator,
     packageService.updateOne
@@ -44,6 +48,8 @@ router
   .delete(
     requireAuth,
     requireRole(["admin", "super-admin", "owner"]),
+    packageIdValidator,
+    packageService.isTheCurrentUserOwnerOfSalon,
     packageService.deleteOne
   );
 

@@ -21,11 +21,11 @@ const userSubscriptionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-// userSubscriptionSchema.pre(/^find/, function (next) {
-//   this.populate({
-//     path: "package",
-//     select: "title course subscriptionDurationDays type",
-//   });
-//   next();
-// });
+userSubscriptionSchema.pre(/^find/, function (next) {
+  this.populate({
+    path: "package",
+    select: "title ",
+  });
+  next();
+});
 module.exports = mongoose.model("UserSubscription", userSubscriptionSchema);

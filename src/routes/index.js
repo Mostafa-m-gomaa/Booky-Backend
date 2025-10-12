@@ -17,7 +17,7 @@ router.use(
 router.use("/coupons", require("../modules/coupons/coupon.routes"));
 router.use("/packages", require("../modules/package/package.route"));
 router.use(
-  "/subscription",
+  "/subscriptions",
   require("../modules/subscription/subscription.route")
 );
 

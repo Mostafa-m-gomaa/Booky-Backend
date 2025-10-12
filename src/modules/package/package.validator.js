@@ -23,10 +23,11 @@ exports.createPackageValidator = [
     .isLength({ min: 10 })
     .withMessage("Description must be at least 10 characters."),
 
-  // timesToUse
+  // timesToUse (required if type is "membership")
   check("timesToUse")
+    .if((value, { req }) => req.body.type === "membership")
     .notEmpty()
-    .withMessage("timesToUse is required")
+    .withMessage("timesToUse is required when type is membership")
     .isInt({ min: 1 })
     .withMessage("timesToUse must be a positive integer"),
 
@@ -59,12 +60,13 @@ exports.createPackageValidator = [
 
   // type
   check("type")
-    .optional()
-    .isIn(["service", "course"])
-    .withMessage("Type must be either service or course"),
+    .notEmpty()
+    .withMessage("Type is required")
+    .isIn(["bundle", "membership"])
+    .withMessage("Type must be either bundle or membership"),
 
   // course (required if type is "course")
-  body("salon")
+  check("salon")
     .notEmpty()
     .isMongoId()
     .withMessage("Invalid salon ID")
@@ -135,8 +137,8 @@ exports.updatePackageValidator = [
   // type
   check("type")
     .optional()
-    .isIn(["service", "course"])
-    .withMessage("Type must be either service or course"),
+    .isIn(["bundle", "membership"])
+    .withMessage("Type must be either bundle or membership"),
 
   // course (required if type is "course")
   body("salon")
