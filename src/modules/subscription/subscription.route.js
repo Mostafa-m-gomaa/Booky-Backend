@@ -6,20 +6,34 @@ const { requireRole } = require("../../lib/rbac/requireRole");
 
 const router = express.Router();
 
+router.get(
+  "/getPackageSubscriptions/:id",
+  requireAuth,
+  subscriptionService.filterSubscriptionsByPackage,
+  subscriptionService.getAll
+);
+
 router
   .route("/")
   .get(
     requireAuth,
+    requireRole(["super-admin", "client"]),
     subscriptionService.filterUserPackages,
     subscriptionService.getMySubscriptions
-  );
-router
-  .route("/:id") //pcakege id
+  )
   .post(
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "super-admin", "owner"]),
+    subscriptionService.createSubscriptions
+  );
 
-    subscriptionService.AddsubscriberToCollection
+router
+  .route("/:id")
+  .get(requireAuth, subscriptionService.getOne)
+  .delete(
+    requireAuth,
+    requireRole(["super-admin", "admin", "owner"]),
+    subscriptionService.deleteOne
   );
 
 module.exports = router;

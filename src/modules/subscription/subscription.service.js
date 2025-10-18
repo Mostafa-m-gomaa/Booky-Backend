@@ -2,15 +2,18 @@ const Package = require("../package/package.model");
 const Subscription = require("./subscription.model");
 const ApiError = require("../../utils/apiError");
 const factory = require("../../utils/handlerFactory");
+const Salons = require("../salons/salon.model");
 
 //@desc : add subscriber to collection manually
-exports.AddsubscriberToCollection = async (req, res, next) => {
-  const { user } = req.body;
-  const packageId = req.params.id;
+exports.createSubscriptions = async (req, res, next) => {
+  const { user, packageId } = req.body;
 
   const package = await Package.findById(packageId);
   if (!package) {
-    return next(new ApiError("Collection Not Found", 404));
+    return next(new ApiError("Package Not Found", 404));
+  }
+  if (package.type !== "membership") {
+    return next(new ApiError("package's type is not membership", 400));
   }
 
   const subscription = await Subscription.create({
@@ -19,15 +22,26 @@ exports.AddsubscriberToCollection = async (req, res, next) => {
     timesToUse: package.timesToUse,
     timesUsed: 0,
   });
-  return res.status(201).json({ subscription });
+  return res.status(201).json({ status: "success", subscription });
 };
 
-exports.filterUserPackages = (req, res, next) => {
+exports.filterUserPackages = async (req, res, next) => {
   let filterObject = {};
-  filterObject = { user: req.user._id };
+  if (req.user.role === "client") filterObject = { user: req.user._id };
   req.filterObj = filterObject;
   next();
 };
+exports.filterSubscriptionsByPackage = async (req, res, next) => {
+  const packageId = req.params.id;
+  const package = await Package.findById(packageId);
+  if (!package) {
+    return next(new ApiError("Package Not Found", 404));
+  }
+
+  req.filterObj = { package: packageId };
+  next();
+};
+
 exports.getMySubscriptions = factory.getAll(Subscription);
 
 //-----------------------
@@ -77,42 +91,12 @@ exports.checkUserSubscription = async (user, course = null) => {
   }
   return true; // Valid subscription found
 };
-//--------------------------------
-exports.subscribeToFreePackage = async (courseId, userId) => {
-  try {
-    const package = await Package.findOne({ course: courseId }).select(
-      "_id price subscriptionDurationDays"
-    );
-    if (!package) {
-      return;
-    }
-    if (package.price && package.price > 0) {
-      return;
-    }
-    // const isUserSubscribed = await Subscription.findOne({
-    //   user: userId,
-    //   package: package._id,
-    // });
-    // if (isUserSubscribed) {
-    //   return;
-    // }
-    const startDate = new Date();
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + package.subscriptionDurationDays);
 
-    await Subscription.create({
-      user: userId,
-      package: package._id,
-      startDate,
-      endDate,
-    });
-    // await OrderService.makeSureUserInChat(package._id, userId);
-    const packageData = await Package.findById(package._id).populate("course");
-    await addUserToGroupChatAndNotify(userId, packageData.course._id);
-  } catch (error) {
-    console.log(`subscribeToFreePackage \nerror: ${error.message}`);
-  }
-};
+exports.deleteOne = factory.deleteOne(Subscription);
+
+exports.getOne = factory.getOne(Subscription);
+
+exports.getAll = factory.getAll(Subscription);
 //680d051cf1cfb2c30b2b1497  delete all chats related to this package
 // you can not do this , because chat related with course Not package
 

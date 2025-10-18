@@ -28,19 +28,14 @@ exports.updateOne = (Model) => async (req, res, next) => {
     });
 
     if (!document) {
-      return next(
-        new ApiError(
-          res.__
-            ? res.__("errors.Not-Found", { document: "document" })
-            : `No document For this id ${req.params.id}`,
-          404
-        )
-      );
+      return res
+        .status(404)
+        .json({ message: `No document for this id ${req.params.id}` });
     }
 
     return res
       .status(200)
-      .json({ status: `updated successfully`, data: localizedDocument });
+      .json({ status: `updated successfully`, data: document });
   } catch (error) {
     console.error("Error updating document:", error);
     return next(error); // pass to centralized error handler
@@ -134,21 +129,13 @@ exports.getAll =
 // ---------------- deleteOne ----------------
 exports.deleteOne = (Model) => async (req, res, next) => {
   try {
+    console.log("here22");
     const { id } = req.params;
     const document = await Model.findById(id);
     if (!document) {
       return next(new ApiError(`No document for this id ${id}`, 404));
     }
-
-    // Prefer document.remove() if exists (to trigger remove hooks), otherwise use deleteOne on doc or model
-    if (typeof document.remove === "function") {
-      await document.remove();
-    } else if (typeof document.deleteOne === "function") {
-      await document.deleteOne();
-    } else {
-      await Model.deleteOne({ _id: id });
-    }
-
+    await Model.deleteOne({ _id: id });
     return res.status(200).json({ ok: true, deleted: true, id });
   } catch (error) {
     console.error("Error deleting document:", error);

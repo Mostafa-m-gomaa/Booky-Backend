@@ -1,8 +1,6 @@
 const mongoose = require("mongoose");
 
 //**
-// @desc : each package avail users to attend (lives) only , not any thing else
-// @desc : each package is related to one course only
 // @desc : we handle package subscription in userSubscriptionModel.js
 // **/
 const packageSchema = new mongoose.Schema(
@@ -15,17 +13,15 @@ const packageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Salon",
     },
-
+    services: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
     title: { type: String, required: true },
     description: { type: String, required: true },
     slug: {
       type: String,
-      required: true,
       lowercase: true,
     },
     timesToUse: {
       type: Number,
-      required: true,
     },
     price: {
       type: Number,
@@ -36,6 +32,7 @@ const packageSchema = new mongoose.Schema(
     priceAfterDiscount: {
       type: Number,
     },
+    image: String,
     status: {
       type: String,
       enum: ["active", "inactive"],
@@ -43,8 +40,7 @@ const packageSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["service", "course"],
-      default: "service",
+      enum: ["bundle", "membership"],
     },
   },
   { timestamps: true }
@@ -55,6 +51,10 @@ packageSchema.pre(/^find/, function (next) {
   this.populate({
     path: "creator",
     select: "name email phone role",
+  });
+  this.populate({
+    path: "services",
+    select: "name price",
   });
 
   next();
