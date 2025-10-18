@@ -9,6 +9,7 @@ const CouponRedemption = require('../coupons/couponRedemption.model');
 const handlerFactory = require('../../utils/handlerFactory');
 const axios = require('axios');
 const mongoose = require('mongoose');
+const { sendNotification } = require('../notifications/notification.controller');
 
 // helpers
 function dayKeyOf(dateISO) {

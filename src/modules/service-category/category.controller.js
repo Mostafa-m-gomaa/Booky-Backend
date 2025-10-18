@@ -4,7 +4,7 @@ const factory = require("../../utils/handlerFactory");
 
 
 exports.createCategory = asyncHandler(async (req, res) => {
-  const { name, description, salonId } = req.body;
+  const { name, description, salonId ,catType } = req.body;
   // const salonId = req?.query?.salonId;
   if (!salonId) return res.status(400).json({ message: "Salon scope missing" });
 
@@ -13,6 +13,7 @@ exports.createCategory = asyncHandler(async (req, res) => {
     description,
     image: req.file?.path,
     salonId,
+    catType
   });
 
   res.status(201).json(category);
@@ -21,10 +22,10 @@ exports.createCategory = asyncHandler(async (req, res) => {
 
 exports.getCategories=factory.getAll(Category , 'Category');
 exports.updateCategory = asyncHandler(async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description , catType } = req.body;
   const updated = await Category.findByIdAndUpdate(
     req.params.id,
-    { name, description, image: req.file?.path },
+    { name, description, image: req.file?.path , catType },
     { new: true }
   );
   if (!updated) return res.status(404).json({ message: "Category not found" });

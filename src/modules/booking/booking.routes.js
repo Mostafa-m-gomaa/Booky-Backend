@@ -4,7 +4,7 @@ const { requireAuth } = require('../../middleware/auth');
 const { requireRole } = require('../../lib/rbac/requireRole');
 
 
-// router.use(requireAuth);
+router.use(requireAuth);
 // router.use(requireRole(['owner', 'admin'])); // ممكن توسعها لاحقًا
 
 // 📌 Client routes

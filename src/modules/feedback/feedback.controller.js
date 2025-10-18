@@ -1,12 +1,23 @@
 const Feedback = require('./feedback.model');
 const Booking = require('../booking/booking.model');
+const Salon = require('../salons/salon.model');
 const { asyncHandler } = require('../../utils/asyncHandler');
 const handlerFactory = require('../../utils/handlerFactory');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
-// ✅ تعديل: storage يفصل المجلد حسب mimetype
+exports.updateSalonAvgRating = async (salonId) => {
+  const avgResult = await Feedback.aggregate([
+    { $match: { salonId: new mongoose.Types.ObjectId(salonId) } },  // فلترة feedbacks للـ salon
+    { $group: { _id: null, avgRating: { $avg: '$rating' }, total: { $sum: 1 } } }  // حساب المتوسط وعدد التقييمات
+  ]);
+  const avgRating = avgResult.length >  0 ? Math.round(avgResult[0].avgRating * 10) / 10 : 0;  // تقريب لـ 1 رقم عشري (مثل 4.5)
+
+  await Salon.findByIdAndUpdate(salonId, { avgRating });  // تحديث الـ field
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let uploadDir;
@@ -76,6 +87,7 @@ exports.createFeedback = [
       videos   // ✅ حفظ paths الفيديوهات
     });
 
+    await updateSalonAvgRating(booking.salonId);
     res.status(201).json(feedback);
   })
 ];
@@ -99,64 +111,7 @@ exports.authorizeFeedbackOwner = async (req, res, next) => {
   }
 }
 
-// ✅ إنشاء فيدباك بعد انتهاء الحجز
-// exports.createFeedback = asyncHandler(async (req, res) => {
-//   const { bookingId, rating, comment } = req.body;
 
-//   const booking = await Booking.findOne({ _id: bookingId, clientId: req.user._id });
-//   if (!booking) return res.status(404).json({ message: 'Booking not found or not yours' });
-
-//   if (booking.status !== 'completed') {
-//     return res.status(400).json({ message: 'You can only review completed bookings' });
-//   }
-
-//   const existing = await Feedback.findOne({ bookingId });
-//   if (existing) return res.status(400).json({ message: 'You already submitted feedback for this booking' });
-
-//   const feedback = await Feedback.create({
-//     bookingId,
-//     salonId: booking.salonId,
-//     clientId: req.user._id,
-//     rating,
-//     comment,
-//   });
-
-//   res.status(201).json(feedback);
-// });
-// ✅ تعديل: إنشاء فيدباك مع media upload
-// exports.createFeedback = [
-//   upload.array('media', 5),  // ✅ جديد: يدعم حتى 5 ملفات (صور/فيديوهات)
-//   asyncHandler(async (req, res) => {
-//     const { bookingId, rating, comment } = req.body;
-// const images = req.files ? req.files.filter(file => file.mimetype.startsWith('image/')).map(file => `/uploads/feedbacks/images/${file.filename}`) : [];
-// const videos = req.files ? req.files.filter(file => file.mimetype.startsWith('video/')).map(file => `/uploads/feedbacks/videos/${file.filename}`) : [];
-//     const booking = await Booking.findOne({ _id: bookingId, clientId: req.user._id });
-//     if (!booking) return res.status(404).json({ message: 'Booking not found or not yours' });
-
-//     if (booking.status !== 'completed') {
-//       return res.status(400).json({ message: 'You can only review completed bookings' });
-//     }
-
-//     const existing = await Feedback.findOne({ bookingId });
-//     if (existing) return res.status(400).json({ message: 'You already submitted feedback for this booking' });
-
-//     // ✅ جديد: جمع paths الـ media
-//     const mediaPaths = req.files ? req.files.map(file => `/uploads/feedbacks/${file.filename}`) : [];
-
-//     const feedback = await Feedback.create({
-//       bookingId,
-//       salonId: booking.salonId,
-//       clientId: req.user._id,
-//       rating,
-//       comment,
-//       images,  // حفظ paths الصور
-//       videos   // حفظ paths الفيديوهات
-//     });
-
-//     res.status(201).json(feedback);
-//   })
-// ];
-// ✅ جديد: إضافة reply على feedback (للـ admin أو salon owner)
 exports.addReply = asyncHandler(async (req, res) => {
   const { feedbackId } = req.params;
   const { text } = req.body;

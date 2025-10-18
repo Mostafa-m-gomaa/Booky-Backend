@@ -16,6 +16,7 @@ const SalonSchema = new Schema({
   type: { type: String, enum: ['men', 'women', 'both']},
   address: { type: String },
   phone: { type: String },
+  avgRating: { type: Number, default: 0 ,min :0,max:5,required: false},
   location: {
     type: { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number], default: [0, 0] } // [lng, lat]

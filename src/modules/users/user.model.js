@@ -50,13 +50,18 @@ const OtpSchema = new Schema(
 
 const UserSchema = new Schema(
   {
-    salonId: { type: Schema.Types.ObjectId, ref: "Salon" }, // for employees
+    salonId: { type: Schema.Types.ObjectId, ref: "Salon" }, 
     name: { type: String, required: true },
     email: { type: String, index: true, sparse: true },
     passwordHash: { type: String, required: true },
     phone: { type: String, required: true, unique: true },
     gender: { type: String, enum: ["male", "female"] },
     avatar: { type: String },
+     location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], default: [0, 0] } // [lng, lat]
+  },
+  notes : String ,
     role: {
       type: String,
       required: true,

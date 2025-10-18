@@ -20,13 +20,21 @@ exports.createSalon = asyncHandler(async (req, res) => {
   } catch (error) {
     return res.status(400).json({ message: 'Invalid format for openingHours. Must be JSON array.' });
   }
+let locationStr = {};
+if (location) {
+  try {
+    locationStr = JSON.parse(location);
+  } catch (err) {
+    return res.status(400).json({ message: 'Invalid location format' });
+  }
+}
 
   const salon = await Salon.create({
     name,
     type,
     address,
     phone,
-    location,
+    location : locationStr,
     area ,
     openingHours: parsedOpeningHours,
     images,

@@ -241,6 +241,8 @@ const login = asyncHandler(async (req, res) => {
       phone: user.phone,
       role: user.role,
       salonId: user.salonId,
+      notes : user.notes,
+      location : user.location
     },
   });
 });

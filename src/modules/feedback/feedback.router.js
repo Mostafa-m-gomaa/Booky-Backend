@@ -11,7 +11,7 @@ router.get('/',  controller.getAllFeedbacks);
 router
   .route('/:feedbackId')
   .get(controller.getFeedback)
-  .put(controller.authorizeFeedbackOwner, controller.updateFeedback)
+  .put(controller.authorizeFeedbackOwner,controller.updateSalonAvgRating, controller.updateFeedback)
   .delete(controller.authorizeFeedbackOwner, controller.deleteFeedback);
 
 router.post('/:feedbackId/reply', requireRole('admin', 'salon-owner'), controller.addReply);

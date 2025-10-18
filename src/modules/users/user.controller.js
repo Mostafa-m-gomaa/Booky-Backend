@@ -71,7 +71,7 @@ const listBySalonId = asyncHandler(async (req, res) => {
 // ───────────────────────── self endpoints ─────────────────────────
 
 const updateMe = asyncHandler(async (req, res) => {
-  const allowed = ["name", "email", "phone", "avatar"];
+  const allowed = ["name", "email", "phone", "gender", "location" , "notes"];
   const patch = {};
   for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
 

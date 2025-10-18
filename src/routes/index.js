@@ -20,5 +20,7 @@ router.use(
   "/subscription",
   require("../modules/subscription/subscription.route")
 );
+router.use("/notifications", require("../modules/notifications/notification.routes"));
+router.use("/category-types", require("../modules/category-types/catTypes.routes"));
 
 module.exports = router;

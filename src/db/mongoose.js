@@ -12,7 +12,6 @@ async function connectDB() {
     } catch (error) {
         console.error('Error connecting to MongoDB:', error);
     }
-// await mongoose.connect(ENV.MONGO_URI);
 }
 
 
